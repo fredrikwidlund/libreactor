@@ -75,11 +75,24 @@ int reactor_fd_delete(reactor_fd *d)
 void reactor_fd_handler(reactor_event *e)
 {
   reactor_fd *d = e->call->data;
-
-  reactor_dispatch(&d->user, REACTOR_FD_READ, NULL);
+  int mask =
+    (e->type & EPOLLIN ? REACTOR_FD_READ : 0) |
+    (e->type & EPOLLOUT ? REACTOR_FD_WRITE : 0);
+  
+  reactor_dispatch(&d->user, mask, NULL);
 }
 
 int reactor_fd_descriptor(reactor_fd *d)
 {
   return d->descriptor;
+}
+
+int reactor_fd_events(reactor_fd *d, int mask)
+{
+  d->ev.events =
+    (mask & REACTOR_FD_READ ? EPOLLIN : 0) |
+    (mask & REACTOR_FD_WRITE ? EPOLLOUT : 0) |
+    EPOLLET;
+
+  return epoll_ctl(d->reactor->epollfd, EPOLL_CTL_MOD, d->descriptor, &d->ev);
 }

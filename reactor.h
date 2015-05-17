@@ -21,13 +21,13 @@ struct reactor_event
   reactor_call    *call;
   int              type;
   void            *data;
-  /* XXX add call object property? */
 };
 
 struct reactor_call
 {
   reactor_handler *handler;
   void            *data;
+  /* XXX add call object property? */
 };
 
 struct reactor_data

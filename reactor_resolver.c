@@ -23,6 +23,9 @@ reactor_resolver *reactor_resolver_new(reactor *r, reactor_handler *h, struct ga
   int e;
   
   s = malloc(sizeof *s);
+  if (!s)
+    return NULL;
+  
   e = reactor_resolver_construct(r, s, h, list, nitems, user);
   if (e == -1)
     {

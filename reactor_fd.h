@@ -1,7 +1,8 @@
 #ifndef REACTOR_FD_H_INCLUDED
 #define REACTOR_FD_H_INCLUDED
 
-#define REACTOR_FD_READ 1
+#define REACTOR_FD_READ  0x01
+#define REACTOR_FD_WRITE 0x02
 
 typedef struct reactor_fd reactor_fd;
 
@@ -20,5 +21,6 @@ int         reactor_fd_destruct(reactor_fd *);
 int         reactor_fd_delete(reactor_fd *);
 void        reactor_fd_handler(reactor_event *);
 int         reactor_fd_descriptor(reactor_fd *);
+int         reactor_fd_events(reactor_fd *, int);
 
 #endif /* REACTOR_FD_H_INCLUDED */

@@ -59,22 +59,33 @@ void reactor_socket_handler(reactor_event *e)
   reactor_socket *s = e->call->data;
   char buffer[4096];
   ssize_t n;
-  
-  while (1)
+
+  if (e->type & REACTOR_FD_WRITE)
+    reactor_dispatch(&s->user, REACTOR_SOCKET_WRITE_READY, NULL);
+
+  if (e->type & REACTOR_FD_READ)
     {
-      n = read(reactor_fd_descriptor(&s->fd), buffer, sizeof buffer);
-      if (n == 0)
+      while (1)
 	{
-	  reactor_dispatch(&s->user, REACTOR_SOCKET_CLOSE, NULL);
-	  break;
-	}
+	  n = read(reactor_fd_descriptor(&s->fd), buffer, sizeof buffer);
+	  if (n == 0)
+	    {
+	      reactor_dispatch(&s->user, REACTOR_SOCKET_CLOSE, NULL);
+	      break;
+	    }
       
-      if (n == -1 && errno == EAGAIN)
-	break;
-
-      if (n == -1)
-	err(1, "read");
-
-      reactor_dispatch(&s->user, REACTOR_SOCKET_DATA, (reactor_data[]){{.base = buffer, .size = n}});
+	  if (n == -1 && errno == EAGAIN)
+	    break;
+	  
+	  if (n == -1)
+	    err(1, "read");
+	  
+	  reactor_dispatch(&s->user, REACTOR_SOCKET_DATA, (reactor_data[]){{.base = buffer, .size = n}});
+	}
     }
+}
+
+int reactor_socket_write_notify(reactor_socket *s)
+{
+  return reactor_fd_events(&s->fd, REACTOR_FD_READ | REACTOR_FD_WRITE);
 }
