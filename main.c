@@ -11,13 +11,15 @@
 #include "reactor_signal.h"
 #include "reactor_timer.h"
 #include "reactor_socket.h"
+#include "reactor_resolver.h"
 
 struct app
 {
-  reactor        *reactor;
-  reactor_timer  *timer;
-  reactor_socket *socket;
-  reactor_signal *signal;
+  reactor          *reactor;
+  reactor_timer    *timer;
+  reactor_socket   *socket;
+  reactor_signal   *signal;
+  reactor_resolver *resolver;
 };
 
 void socket_handler(reactor_event *e)
@@ -52,15 +54,28 @@ void signal_handler(reactor_event *e)
   reactor_halt(app->reactor);
 }
 
+void resolver_handler(reactor_event *e)
+{
+  (void) fprintf(stderr, "[resolver]\n");
+}
+
 int main()
 {
   struct app app;
-  int e;
+  int e, i;
   
   app.reactor = reactor_new();
   if (!app.reactor)
     err(1, "reactor_new");
 
+  app.resolver = reactor_resolver_new(app.reactor, resolver_handler, &app);
+  if (!app.resolver)
+    err(1, "reactor_resolver_new");
+
+  e = reactor_resolver_lookup(app.resolver, "www.sunet.se", NULL);
+  if (e == -1)
+    err(1, "reactor_resolver_lookup");
+  
   app.signal = reactor_signal_new(app.reactor, signal_handler, SIGINT, &app);
   if (!app.signal)
     err(1, "reactor_signal_new");
