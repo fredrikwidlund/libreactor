@@ -1,14 +1,18 @@
+#define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
 #include <signal.h>
+#include <netdb.h>
 #include <err.h>
 #include <sys/epoll.h>
 #include <sys/signalfd.h>
+#include <arpa/inet.h>
 
 #include "reactor.h"
 #include "reactor_fd.h"
 #include "reactor_signal.h"
+#include "reactor_signal_dispatcher.h"
 #include "reactor_timer.h"
 #include "reactor_socket.h"
 #include "reactor_resolver.h"
@@ -19,7 +23,6 @@ struct app
   reactor_timer    *timer;
   reactor_socket   *socket;
   reactor_signal   *signal;
-  reactor_resolver *resolver;
 };
 
 void socket_handler(reactor_event *e)
@@ -56,25 +59,45 @@ void signal_handler(reactor_event *e)
 
 void resolver_handler(reactor_event *e)
 {
-  (void) fprintf(stderr, "[resolver]\n");
+  reactor_resolver *s = e->data;
+  struct gaicb *ar = &s->ar;
+  struct addrinfo *ai;
+  struct sockaddr_in *sin;
+  char name[256];
+  int error;
+  
+  (void) fprintf(stderr, "[resolver reply %s]\n", ar->ar_name);
+  for (ai = ar->ar_result; ai; ai = ai->ai_next)
+    {
+      if (ai->ai_family == AF_INET && ai->ai_socktype == SOCK_STREAM)
+	{
+	  sin = (struct sockaddr_in *) ai->ai_addr;
+	  (void) fprintf(stderr, "-> %s\n", inet_ntop(AF_INET, &sin->sin_addr, name, sizeof name));
+	}
+    }
+
+  error = reactor_resolver_delete(s);
+  if (error == -1)
+    err(1, "reactor_resolver_delete");
 }
 
 int main()
 {
   struct app app;
-  int e, i;
-  
+  struct reactor_resolver *s;
+  int e;
+
   app.reactor = reactor_new();
   if (!app.reactor)
     err(1, "reactor_new");
 
-  app.resolver = reactor_resolver_new(app.reactor, resolver_handler, &app);
-  if (!app.resolver)
+  s = reactor_resolver_new(app.reactor, resolver_handler, "www.sunet.se", NULL, &app);
+  if (!s)
     err(1, "reactor_resolver_new");
-
-  e = reactor_resolver_lookup(app.resolver, "www.sunet.se", NULL);
-  if (e == -1)
-    err(1, "reactor_resolver_lookup");
+  
+  s = reactor_resolver_new(app.reactor, resolver_handler, "www.svd.se", NULL, &app);
+  if (!s)
+    err(1, "reactor_resolver_new");
   
   app.signal = reactor_signal_new(app.reactor, signal_handler, SIGINT, &app);
   if (!app.signal)

@@ -13,15 +13,16 @@
 
 #include "reactor.h"
 #include "reactor_signal.h"
+#include "reactor_signal_dispatcher.h"
 #include "reactor_resolver.h"
 
-reactor_resolver *reactor_resolver_new(reactor *r, reactor_handler *h, void *user)
+reactor_resolver *reactor_resolver_new(reactor *r, reactor_handler *h, char *name, char *service, void *user)
 {
   reactor_resolver *s;
   int e;
   
   s = malloc(sizeof *s);
-  e = reactor_resolver_construct(r, s, h, user);
+  e = reactor_resolver_construct(r, s, h, name, service, user);
   if (e == -1)
     {
       reactor_resolver_delete(s);
@@ -31,21 +32,48 @@ reactor_resolver *reactor_resolver_new(reactor *r, reactor_handler *h, void *use
   return s;
 }
 
-int reactor_resolver_construct(reactor *r, reactor_resolver *s, reactor_handler *h, void *data)
+int reactor_resolver_construct(reactor *r, reactor_resolver *s, reactor_handler *h, char *name, char *service, void *data)
 {
+  struct sigevent sigev;
+  struct gaicb *ar_list[] = {&s->ar};
   int e;
   
-  *s = (reactor_resolver) {.user = {.handler = h, .data = data}, .reactor = r};
-  e = reactor_signal_construct(r, &s->signal, reactor_resolver_handler, SIGUSR1, s);
+  *s = (reactor_resolver) {.user = {.handler = h, .data = data}, .reactor = r,
+			   .signal = {.handler = reactor_resolver_handler, .data = s},
+			   .ar = {.ar_name = name, .ar_service = service}};
+  s->dispatcher = reactor_signal_dispatcher_new(r);
+  if (!s->dispatcher)
+    return -1;
+
+  sigev = (struct sigevent) {.sigev_notify = SIGEV_SIGNAL, .sigev_signo = REACTOR_SIGNAL_DISPATCHER_SIGNO,
+			     .sigev_value.sival_ptr = &s->signal};
+  e = getaddrinfo_a(GAI_NOWAIT, ar_list, 1, &sigev);
   if (e == -1)
     return -1;
-  
+
   return 0;
 }
 
 int reactor_resolver_destruct(reactor_resolver *s)
 {
-  return reactor_signal_destruct(&s->signal);
+  int e;
+  
+  if (s->dispatcher)
+    {
+      e = gai_cancel(&s->ar);
+      if (e != EAI_ALLDONE)
+	return -1;
+
+      if (s->ar.ar_result)
+	freeaddrinfo(s->ar.ar_result);
+
+      e = reactor_signal_dispatcher_delete(s->dispatcher);
+      if (e == -1)
+	return -1;
+      s->dispatcher = NULL;
+    }
+
+  return 0;
 }
 
 int reactor_resolver_delete(reactor_resolver *s)
@@ -62,38 +90,8 @@ int reactor_resolver_delete(reactor_resolver *s)
 
 void reactor_resolver_handler(reactor_event *e)
 {
-  struct signalfd_siginfo *fdsi = e->data;
-  struct gaicb *ar = (struct gaicb *) fdsi->ssi_ptr;
-  struct addrinfo *ai;
-  struct sockaddr_in *sin;
-  char name[4096];
-  //reactor_resolver *s = e->call->data;
+  reactor_resolver *s = e->call->data;
 
-  (void) fprintf(stderr, "[signal SIGUSR1 raised, pid %d, int %d, ptr %p\n", fdsi->ssi_pid, fdsi->ssi_int, (void *) fdsi->ssi_ptr);
-  
-  for (ai = ar->ar_result; ai; ai = ai->ai_next)
-    {
-      if (ai->ai_family == AF_INET)
-	{
-	  sin = (struct sockaddr_in *) ai->ai_addr;
-	  (void) fprintf(stderr, "result: %s -> %s\n", ar->ar_name, inet_ntop(AF_INET, &sin->sin_addr, name, sizeof name));
-	}
-    }
-  
-  freeaddrinfo(ar->ar_result);
-  free(ar);
-}
-
-int reactor_resolver_lookup(reactor_resolver *s, char *node, char *service)
-{
-  struct gaicb *ar;
-  int e;
-  
-  ar = malloc(sizeof *ar);
-  *ar = (struct gaicb) {.ar_name = node, .ar_service = service};
-  e = getaddrinfo_a(GAI_NOWAIT, &ar, 1, (struct sigevent[]) {{.sigev_notify = SIGEV_SIGNAL, .sigev_signo = SIGUSR1, .sigev_value.sival_ptr = ar}});
-  if (e == -1)
-    return -1;
-
-  return 0;
+  reactor_dispatch(&s->user, REACTOR_RESOLVER_RESULT, s);
+  //  freeaddrinfo(s->ar.ar_result);
 }
