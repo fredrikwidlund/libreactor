@@ -14,8 +14,8 @@ struct reactor_socket
   reactor_fd          fd;
 };
 
-reactor_socket *reactor_socket_new(reactor *, reactor_handler *, int, void *);
-int             reactor_socket_construct(reactor *, reactor_socket *, reactor_handler *, int, void *);
+reactor_socket *reactor_socket_new(reactor *, int, void *, reactor_handler *, void *);
+int             reactor_socket_construct(reactor *, reactor_socket *, int, void *, reactor_handler *, void *);
 int             reactor_socket_destruct(reactor_socket *);
 int             reactor_socket_delete(reactor_socket *);
 void            reactor_socket_handler(reactor_event *);

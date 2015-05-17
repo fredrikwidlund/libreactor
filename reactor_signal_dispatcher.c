@@ -11,6 +11,8 @@
 #include <sys/signalfd.h>
 #include <arpa/inet.h>
 
+#include "buffer.h"
+#include "vector.h"
 #include "reactor.h"
 #include "reactor_signal.h"
 #include "reactor_signal_dispatcher.h"
@@ -45,7 +47,7 @@ int reactor_signal_dispatcher_construct(reactor *r, reactor_signal_dispatcher *s
   int e;
   
   *s = (reactor_signal_dispatcher) {.reactor = r, .ref = 1};
-  e = reactor_signal_construct(r, &s->signal, reactor_signal_dispatcher_handler, REACTOR_SIGNAL_DISPATCHER_SIGNO, s);
+  e = reactor_signal_construct(r, &s->signal, REACTOR_SIGNAL_DISPATCHER_SIGNO, s, reactor_signal_dispatcher_handler, NULL);
   if (e == -1)
     return -1;
   
@@ -77,8 +79,8 @@ int reactor_signal_dispatcher_delete(reactor_signal_dispatcher *s)
 
 void reactor_signal_dispatcher_handler(reactor_event *e)
 {
-  struct signalfd_siginfo *fdsi = e->data;
+  struct signalfd_siginfo *fdsi = e->message;
 
   if (fdsi->ssi_pid == getpid() && fdsi->ssi_uid == getuid())
-    reactor_dispatch((reactor_call *) fdsi->ssi_ptr, REACTOR_SIGNAL_DISPATCHER_RAISED, fdsi); 
+    reactor_dispatch_call(reactor_signal_dispatcher_singleton, (reactor_call *) fdsi->ssi_ptr, REACTOR_SIGNAL_DISPATCHER_RAISED, fdsi); 
 }

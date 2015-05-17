@@ -9,6 +9,8 @@
 #include <sys/signalfd.h>
 #include <arpa/inet.h>
 
+#include "buffer.h"
+#include "vector.h"
 #include "reactor.h"
 #include "reactor_fd.h"
 #include "reactor_signal.h"
@@ -27,7 +29,7 @@ struct app
 
 void resolver_handler(reactor_event *e)
 {
-  reactor_resolver *s = e->data;
+  reactor_resolver *s = e->sender;
   int i;
   struct addrinfo *ai;
   struct sockaddr_in *sin;
@@ -59,7 +61,7 @@ void resolver_handler(reactor_event *e)
   if (error == -1)
     err(1, "reactor_resolver_delete");
   */
-  reactor_halt(e->call->data);
+  reactor_halt(e->receiver->object);
 }
 
 int main()
@@ -72,11 +74,11 @@ int main()
   if (!app.reactor)
     err(1, "reactor_new");
 
-  s = reactor_resolver_new(app.reactor, resolver_handler,
+  s = reactor_resolver_new(app.reactor,
 			   (struct gaicb *[]){
 			     (struct gaicb[]){{.ar_name = "www.sunet.se"}},
 			     (struct gaicb[]){{.ar_name = "www.dontexist.blah"}}
-			   }, 2, app.reactor);
+			   }, 2, app.reactor, resolver_handler, NULL);
   if (!s)
     err(1, "reactor_resolver_new");
   

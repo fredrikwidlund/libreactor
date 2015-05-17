@@ -9,6 +9,8 @@
 #include <sys/signalfd.h>
 #include <arpa/inet.h>
 
+#include "buffer.h"
+#include "vector.h"
 #include "reactor.h"
 #include "reactor_signal.h"
 #include "reactor_signal_dispatcher.h"
@@ -16,8 +18,8 @@
 
 void handler(reactor_event *e)
 {
-  reactor *r = e->call->data;
-  reactor_resolver *s = e->data;
+  reactor *r = e->receiver->object;
+  reactor_resolver *s = e->sender;
   struct addrinfo *ai = s->list[0]->ar_result;
   char name[256];
 
@@ -33,7 +35,7 @@ void handler(reactor_event *e)
 int main()
 {
   reactor *r = reactor_new(); 
-  reactor_resolver *s = reactor_resolver_new_simple(r, handler, "www.svtplay.se", "http", r);
+  reactor_resolver *s = reactor_resolver_new_simple(r, "www.svtplay.se", "80", r, handler, NULL);
   reactor_run(r);
   reactor_resolver_delete(s);
   reactor_delete(r);

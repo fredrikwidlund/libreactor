@@ -13,6 +13,8 @@
 #include <sys/signalfd.h>
 #include <arpa/inet.h>
 
+#include "buffer.h"
+#include "vector.h"
 #include "reactor.h"
 #include "reactor_signal.h"
 #include "reactor_signal_dispatcher.h"
@@ -21,7 +23,7 @@
 #include "reactor_socket.h"
 #include "reactor_client.h"
 
-reactor_client  *reactor_client_new(reactor *r, reactor_handler *h, int type, char *name, char *service, void *user)
+reactor_client *reactor_client_new(reactor *r, int type, char *name, char *service, void *o, reactor_handler *h, void *user)
 {
   reactor_client *c;
   int e;
@@ -30,7 +32,7 @@ reactor_client  *reactor_client_new(reactor *r, reactor_handler *h, int type, ch
   if (!c)
     return NULL;
 
-  e = reactor_client_construct(r, c, h, type, name, service, user);
+  e = reactor_client_construct(r, c, type, name, service, o, h, user);
   if (e == -1)
     {
       reactor_client_delete(c);
@@ -40,9 +42,9 @@ reactor_client  *reactor_client_new(reactor *r, reactor_handler *h, int type, ch
   return c;
 }
 
-int reactor_client_construct(reactor *r, reactor_client *c, reactor_handler *h, int type, char *name, char *service, void *data)
+int reactor_client_construct(reactor *r, reactor_client *c, int type, char *name, char *service, void *o, reactor_handler *h, void *data)
 {  
-  *c = (reactor_client) {.user= {.handler = h, .data = data}, .reactor = r, .state = REACTOR_CLIENT_STATE_INIT,
+  *c = (reactor_client) {.user= {.object = o, .handler = h, .data = data}, .reactor = r, .state = REACTOR_CLIENT_STATE_INIT,
 			 .type = type, .name = name, .service = service};
 
   return reactor_client_update(c);
@@ -67,8 +69,8 @@ int reactor_client_delete(reactor_client *c)
 
 void reactor_client_resolver_handler(reactor_event *event)
 {
-  reactor_client *c = event->call->data;
-  reactor_resolver *s = event->data;
+  reactor_client *c = event->receiver->object;
+  reactor_resolver *s = event->sender;
   int e;
   
   if (c->state != REACTOR_CLIENT_STATE_RESOLVING || !s->list[0]->ar_result)
@@ -89,7 +91,7 @@ void reactor_client_resolver_handler(reactor_event *event)
 
 void reactor_client_socket_handler(reactor_event *event)
 {
-  reactor_client *c = event->call->data;
+  reactor_client *c = event->receiver->object;
   
   if (c->state != REACTOR_CLIENT_STATE_CONNECTING)
     {
@@ -98,7 +100,7 @@ void reactor_client_socket_handler(reactor_event *event)
     }
   
   c->state = REACTOR_CLIENT_STATE_CONNECTED;
-  reactor_dispatch(&c->user, REACTOR_CLIENT_CONNECTED, NULL);
+  reactor_dispatch_call(c, &c->user, REACTOR_CLIENT_CONNECTED, NULL);
 }
 
 int reactor_client_update(reactor_client *c)
@@ -133,7 +135,7 @@ int reactor_client_resolve(reactor_client *c)
   if (c->state != REACTOR_CLIENT_STATE_INIT)
     return -1;
   
-  c->resolver = reactor_resolver_new(c->reactor, reactor_client_resolver_handler, list, 1, c);
+  c->resolver = reactor_resolver_new(c->reactor, list, 1, c, reactor_client_resolver_handler, NULL);
   if (!c->resolver)
     return -1;
 
@@ -160,7 +162,7 @@ int reactor_client_connect(reactor_client *c)
   if (e == -1 && errno != EINPROGRESS)
     return -1;
   
-  c->socket = reactor_socket_new(c->reactor, reactor_client_socket_handler, c->fd, c);
+  c->socket = reactor_socket_new(c->reactor, c->fd, c, reactor_client_socket_handler, NULL);
   if (!c->socket)
     return -1;
 

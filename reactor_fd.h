@@ -15,8 +15,8 @@ struct reactor_fd
   reactor_call        main;
 };
 
-reactor_fd *reactor_fd_new(reactor *, reactor_handler *, int, void *);
-int         reactor_fd_construct(reactor *, reactor_fd *, reactor_handler *, int, void *);
+reactor_fd *reactor_fd_new(reactor *, int, void *, reactor_handler *, void *);
+int         reactor_fd_construct(reactor *, reactor_fd *, int, void *, reactor_handler *, void *);
 int         reactor_fd_destruct(reactor_fd *);
 int         reactor_fd_delete(reactor_fd *);
 void        reactor_fd_handler(reactor_event *);

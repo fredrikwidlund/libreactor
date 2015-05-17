@@ -5,17 +5,19 @@
 #include <errno.h>
 #include <sys/epoll.h>
 
+#include "buffer.h"
+#include "vector.h"
 #include "reactor.h"
 #include "reactor_fd.h"
 #include "reactor_socket.h"
 
-reactor_socket *reactor_socket_new(reactor *r, reactor_handler *h, int descriptor, void *user)
+reactor_socket *reactor_socket_new(reactor *r, int descriptor, void *o, reactor_handler *h, void *data)
 {
   reactor_socket *s;
   int e;
   
   s = malloc(sizeof *s);
-  e = reactor_socket_construct(r, s, h, descriptor, user);
+  e = reactor_socket_construct(r, s, descriptor, o, h, data);
   if (e == -1)
     {
       reactor_socket_delete(s);
@@ -25,12 +27,12 @@ reactor_socket *reactor_socket_new(reactor *r, reactor_handler *h, int descripto
   return s;
 }
 
-int reactor_socket_construct(reactor *r, reactor_socket *s, reactor_handler *h, int descriptor, void *data)
+int reactor_socket_construct(reactor *r, reactor_socket *s, int descriptor, void *o, reactor_handler *h, void *data)
 {
   int e;
   
-  *s = (reactor_socket) {.user = {.handler = h, .data = data}, .reactor = r};
-  e = reactor_fd_construct(r, &s->fd, reactor_socket_handler, descriptor, s);
+  *s = (reactor_socket) {.user = {.object = o, .handler = h, .data = data}, .reactor = r};
+  e = reactor_fd_construct(r, &s->fd, descriptor, s, reactor_socket_handler, NULL);
   if (e == -1)
     return -1;
   
@@ -56,12 +58,12 @@ int reactor_socket_delete(reactor_socket *s)
 
 void reactor_socket_handler(reactor_event *e)
 {
-  reactor_socket *s = e->call->data;
+  reactor_socket *s = e->receiver->object;
   char buffer[4096];
   ssize_t n;
 
   if (e->type & REACTOR_FD_WRITE)
-    reactor_dispatch(&s->user, REACTOR_SOCKET_WRITE_READY, NULL);
+    reactor_dispatch_call(s, &s->user, REACTOR_SOCKET_WRITE_READY, NULL);
 
   if (e->type & REACTOR_FD_READ)
     {
@@ -70,7 +72,7 @@ void reactor_socket_handler(reactor_event *e)
 	  n = read(reactor_fd_descriptor(&s->fd), buffer, sizeof buffer);
 	  if (n == 0)
 	    {
-	      reactor_dispatch(&s->user, REACTOR_SOCKET_CLOSE, NULL);
+	      reactor_dispatch_call(s, &s->user, REACTOR_SOCKET_CLOSE, NULL);
 	      break;
 	    }
       
@@ -80,7 +82,7 @@ void reactor_socket_handler(reactor_event *e)
 	  if (n == -1)
 	    err(1, "read");
 	  
-	  reactor_dispatch(&s->user, REACTOR_SOCKET_DATA, (reactor_data[]){{.base = buffer, .size = n}});
+	  reactor_dispatch_call(s, &s->user, REACTOR_SOCKET_DATA, (reactor_data[]){{.base = buffer, .size = n}});
 	}
     }
 }

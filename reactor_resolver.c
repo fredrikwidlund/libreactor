@@ -12,12 +12,14 @@
 #include <sys/signalfd.h>
 #include <arpa/inet.h>
 
+#include "buffer.h"
+#include "vector.h"
 #include "reactor.h"
 #include "reactor_signal.h"
 #include "reactor_signal_dispatcher.h"
 #include "reactor_resolver.h"
 
-reactor_resolver *reactor_resolver_new(reactor *r, reactor_handler *h, struct gaicb *list[], int nitems, void *user)
+reactor_resolver *reactor_resolver_new(reactor *r, struct gaicb *list[], int nitems, void *o, reactor_handler *h, void *data)
 {
   reactor_resolver *s;
   int e;
@@ -26,7 +28,7 @@ reactor_resolver *reactor_resolver_new(reactor *r, reactor_handler *h, struct ga
   if (!s)
     return NULL;
   
-  e = reactor_resolver_construct(r, s, h, list, nitems, user);
+  e = reactor_resolver_construct(r, s, list, nitems, o, h, data);
   if (e == -1)
     {
       reactor_resolver_delete(s);
@@ -36,21 +38,21 @@ reactor_resolver *reactor_resolver_new(reactor *r, reactor_handler *h, struct ga
   return s;
 }
 
-reactor_resolver *reactor_resolver_new_simple(reactor *r, reactor_handler *h, char *name, char *service, void *user)
+reactor_resolver *reactor_resolver_new_simple(reactor *r, char *name, char *service, void *o, reactor_handler *h, void *data)
 {
   struct addrinfo hints = {.ai_family = AF_INET, .ai_socktype = SOCK_STREAM};
   
-  return reactor_resolver_new(r, h, (struct gaicb *[]){
-      (struct gaicb[]){{.ar_name = name, .ar_service = service, .ar_request = &hints}}}, 1, user);
+  return reactor_resolver_new(r, (struct gaicb *[]){
+      (struct gaicb[]){{.ar_name = name, .ar_service = service, .ar_request = &hints}}}, 1, o, h, data);
 }
 
-int reactor_resolver_construct(reactor *r, reactor_resolver *s, reactor_handler *h, struct gaicb *list[], int nitems, void *data)
+int reactor_resolver_construct(reactor *r, reactor_resolver *s, struct gaicb *list[], int nitems, void *o, reactor_handler *h, void *data)
 {
   struct sigevent sigev;
   int e;
 
-  *s = (reactor_resolver) {.user = {.handler = h, .data = data}, .reactor = r,
-			   .signal = {.handler = reactor_resolver_handler, .data = s},
+  *s = (reactor_resolver) {.user = {.object = o, .handler = h, .data = data}, .reactor = r,
+			   .signal = {.object = s, .handler = reactor_resolver_handler, .data = NULL},
 			   .list = reactor_resolver_copy_gaicb(list, nitems), .nitems = nitems};
   if (!s->list)
     {
@@ -162,7 +164,7 @@ int reactor_resolver_delete(reactor_resolver *s)
 
 void reactor_resolver_handler(reactor_event *e)
 {
-  reactor_resolver *s = e->call->data;
+  reactor_resolver *s = e->receiver->object;
 
-  reactor_dispatch(&s->user, REACTOR_RESOLVER_RESULT, s);
+  reactor_dispatch_call(s, &s->user, REACTOR_RESOLVER_RESULT, NULL);
 }

@@ -5,16 +5,18 @@
 #include <err.h>
 #include <sys/epoll.h>
 
+#include "buffer.h"
+#include "vector.h"
 #include "reactor.h"
 #include "reactor_fd.h"
 
-reactor_fd *reactor_fd_new(reactor *r, reactor_handler *h, int fd, void *user)
+reactor_fd *reactor_fd_new(reactor *r, int fd, void *o, reactor_handler *h, void *data)
 {
   reactor_fd *d;
   int e;
   
   d = malloc(sizeof *d);
-  e = reactor_fd_construct(r, d, h, fd, user);
+  e = reactor_fd_construct(r, d, fd, o, h, data);
   if (e == -1)
     {
       (void) reactor_fd_destruct(d);
@@ -24,15 +26,14 @@ reactor_fd *reactor_fd_new(reactor *r, reactor_handler *h, int fd, void *user)
   return d;
 }
 
-int reactor_fd_construct(reactor *r, reactor_fd *d, reactor_handler *h, int fd, void *data)
+int reactor_fd_construct(reactor *r, reactor_fd *d, int fd, void *o, reactor_handler *h, void *data)
 {
   int e;
   
-  *d = (reactor_fd) {.user = {.handler = h, .data = data},
+  *d = (reactor_fd) {.user = {.object = o, .handler = h, .data = data},
 		     .reactor = r, .descriptor = fd,
 		     .ev = {.events = EPOLLIN | EPOLLET, .data.ptr = &d->main},
-		     .main = {.handler = reactor_fd_handler, .data = d}};
-
+		     .main = {.object = d, .handler = reactor_fd_handler}};
   e = fcntl(fd, F_SETFL, O_NONBLOCK);
   if (e == -1)
     return -1;
@@ -74,12 +75,12 @@ int reactor_fd_delete(reactor_fd *d)
 
 void reactor_fd_handler(reactor_event *e)
 {
-  reactor_fd *d = e->call->data;
+  reactor_fd *d = e->receiver->object;
   int mask =
     (e->type & EPOLLIN ? REACTOR_FD_READ : 0) |
     (e->type & EPOLLOUT ? REACTOR_FD_WRITE : 0);
   
-  reactor_dispatch(&d->user, mask, NULL);
+  reactor_dispatch_call(d, &d->user, mask, NULL);
 }
 
 int reactor_fd_descriptor(reactor_fd *d)

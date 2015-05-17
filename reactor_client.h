@@ -29,8 +29,8 @@ struct reactor_client
   reactor_socket       *socket;
 };
 
-reactor_client  *reactor_client_new(reactor *, reactor_handler *, int, char *, char *, void *);
-int              reactor_client_construct(reactor *, reactor_client *, reactor_handler *, int, char *, char *, void *);
+reactor_client  *reactor_client_new(reactor *, int, char *, char *, void *, reactor_handler *, void *);
+int              reactor_client_construct(reactor *, reactor_client *, int, char *, char *, void *, reactor_handler *, void *);
 int              reactor_client_destruct(reactor_client *);
 int              reactor_client_delete(reactor_client *);
 void             reactor_client_handler(reactor_event *);

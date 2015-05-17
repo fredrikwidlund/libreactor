@@ -7,16 +7,18 @@
 #include <sys/epoll.h>
 #include <sys/signalfd.h>
 
+#include "buffer.h"
+#include "vector.h"
 #include "reactor.h"
 #include "reactor_signal.h"
 
-reactor_signal *reactor_signal_new(reactor *r, reactor_handler *h, int sig, void *user)
+reactor_signal *reactor_signal_new(reactor *r, int sig, void *o, reactor_handler *h, void *data)
 {
   reactor_signal *s;
   int e;
   
   s = malloc(sizeof *s);
-  e = reactor_signal_construct(r, s, h, sig, user);
+  e = reactor_signal_construct(r, s, sig, o, h, data);
   if (e == -1)
     {
       (void) reactor_signal_destruct(s);
@@ -26,7 +28,7 @@ reactor_signal *reactor_signal_new(reactor *r, reactor_handler *h, int sig, void
   return s;
 }
 
-int reactor_signal_construct(reactor *r, reactor_signal *s, reactor_handler *h, int sig, void *data)
+int reactor_signal_construct(reactor *r, reactor_signal *s, int sig, void *o, reactor_handler *h, void *data)
 {
   sigset_t mask;
   int e, fd;
@@ -42,10 +44,10 @@ int reactor_signal_construct(reactor *r, reactor_signal *s, reactor_handler *h, 
   if (fd == -1)
     return -1;
 
-  *s = (reactor_signal) {.user = {.handler = h, .data = data},
+  *s = (reactor_signal) {.user = {.object = o, .handler = h, .data = data},
 			 .reactor = r, .descriptor = fd,
 			 .ev = {.events = EPOLLIN | EPOLLET, .data.ptr = &s->main},
-			 .main = {.handler = reactor_signal_handler, .data = s}};
+			 .main = {.object = s, .handler = reactor_signal_handler}};
 
   return epoll_ctl(r->epollfd, EPOLL_CTL_ADD, fd, &s->ev);
 }
@@ -84,7 +86,7 @@ int reactor_signal_delete(reactor_signal *s)
 
 void reactor_signal_handler(reactor_event *e)
 {
-  reactor_signal *s = e->call->data;
+  reactor_signal *s = e->receiver->object;
   struct signalfd_siginfo fdsi;
   ssize_t n;
 
@@ -94,7 +96,7 @@ void reactor_signal_handler(reactor_event *e)
       if (n != sizeof fdsi)
 	break;
 
-      reactor_dispatch(&s->user, REACTOR_SIGNAL_RAISED, &fdsi);
+      reactor_dispatch_call(s, &s->user, REACTOR_SIGNAL_RAISED, &fdsi);
     }
 }
 

@@ -4,6 +4,8 @@
 #include <err.h>
 #include <sys/epoll.h>
 
+#include "buffer.h"
+#include "vector.h"
 #include "reactor.h"
 #include "reactor_fd.h"
 
@@ -74,7 +76,7 @@ int reactor_run(reactor *r)
 	return -1;
       
       for (i = 0; i < n; i ++)
-	reactor_dispatch(events[i].data.ptr, events[i].events, NULL);
+	reactor_dispatch_call(r, events[i].data.ptr, events[i].events, NULL);
     }
 
   return 0;
@@ -85,7 +87,12 @@ void reactor_halt(reactor *r)
   r->flags |= REACTOR_FLAG_HALT;
 }
 
-void reactor_dispatch(reactor_call *call, int type, void *data)
+void reactor_dispatch_call(void *sender, reactor_call *receiver, int type, void *message)
 {
-  call->handler((reactor_event[]){{.call = call, .type = type, .data = data}});
+  receiver->handler((reactor_event[]){{.sender = sender, .receiver = receiver, .type = type, .message = message}});
+}
+
+int reactor_schedule_call(reactor *r, reactor_call *receiver)
+{
+  return vector_push_back(r->scheduled_calls, &receiver);
 }

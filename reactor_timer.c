@@ -7,17 +7,18 @@
 #include <sys/epoll.h>
 #include <sys/timerfd.h>
 
+#include "buffer.h"
+#include "vector.h"
 #include "reactor.h"
-
 #include "reactor_timer.h"
 
-reactor_timer *reactor_timer_new(reactor *r, reactor_handler *h, uint64_t interval, void *user)
+reactor_timer *reactor_timer_new(reactor *r, uint64_t interval, void *o, reactor_handler *h, void *data)
 {
   reactor_timer *t;
   int e;
   
   t = malloc(sizeof *t);
-  e = reactor_timer_construct(r, t, h, interval, user);
+  e = reactor_timer_construct(r, t, interval, o, h, data);
   if (e == -1)
     {
       (void) reactor_timer_destruct(t);
@@ -27,7 +28,7 @@ reactor_timer *reactor_timer_new(reactor *r, reactor_handler *h, uint64_t interv
   return t;
 }
 
-int reactor_timer_construct(reactor *r, reactor_timer *t, reactor_handler *h, uint64_t interval, void *data)
+int reactor_timer_construct(reactor *r, reactor_timer *t, uint64_t interval, void *o, reactor_handler *h, void *data)
 {
   int e, fd;
 
@@ -35,10 +36,10 @@ int reactor_timer_construct(reactor *r, reactor_timer *t, reactor_handler *h, ui
   if (fd == -1)
     return -1;
 
-  *t = (reactor_timer) {.user = {.handler = h, .data = data},
+  *t = (reactor_timer) {.user = {.object = o, .handler = h, .data = data},
 			.reactor = r, .descriptor = fd,
 			.ev = {.events = EPOLLIN | EPOLLET, .data.ptr = &t->main},
-			.main = {.handler = reactor_timer_handler, .data = t}};
+			.main = {.object = t, .handler = reactor_timer_handler, .data = t}};
   
   e = reactor_timer_interval(t, interval);
   if (e == -1)
@@ -91,11 +92,11 @@ int reactor_timer_interval(reactor_timer *t, uint64_t interval)
 
 void reactor_timer_handler(reactor_event *e)
 {
-  reactor_timer *d = e->call->data;
+  reactor_timer *d = e->receiver->object;
   uint64_t expirations;
   ssize_t n;
 
   n = read(d->descriptor, &expirations, sizeof expirations);
   if (n == sizeof expirations)
-    reactor_dispatch(&d->user, REACTOR_TIMER_TIMEOUT, &expirations);  
+    reactor_dispatch_call(d, &d->user, REACTOR_TIMER_TIMEOUT, &expirations);  
 }

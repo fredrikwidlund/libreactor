@@ -1,6 +1,6 @@
 CFLAGS	= -g -Wall -Wpedantic -Werror -O3 -std=gnu11
 LDADD	= -lanl
-OBJS	= reactor.o reactor_fd.o reactor_signal.o reactor_timer.o reactor_socket.o reactor_signal_dispatcher.o reactor_resolver.o reactor_client.o
+OBJS	= buffer.o vector.o reactor.o reactor_fd.o reactor_signal.o reactor_timer.o reactor_socket.o reactor_signal_dispatcher.o reactor_resolver.o reactor_client.o
 
 .PHONY: clean
 

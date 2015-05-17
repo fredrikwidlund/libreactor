@@ -9,6 +9,8 @@
 #include <sys/signalfd.h>
 #include <arpa/inet.h>
 
+#include "buffer.h"
+#include "vector.h"
 #include "reactor.h"
 #include "reactor_fd.h"
 #include "reactor_signal.h"
@@ -27,8 +29,8 @@ struct app
 
 void socket_handler(reactor_event *e)
 {
-  reactor_data *data = e->data;
-  struct app *app = e->call->data;
+  reactor_data *message = e->message;
+  struct app *app = e->receiver->object;
   
   switch (e->type)
     {
@@ -38,7 +40,7 @@ void socket_handler(reactor_event *e)
       app->socket = NULL;
       break;
     case REACTOR_SOCKET_DATA:
-      (void) fprintf(stderr, "[socket data] %.*s\n", (int) data->size - 1, data->base);
+      (void) fprintf(stderr, "[socket data] %.*s\n", (int) message->size - 1, message->base);
       break;
     }
 }
@@ -50,8 +52,8 @@ void timer_handler(reactor_event *e)
 
 void signal_handler(reactor_event *e)
 {
-  struct signalfd_siginfo *fdsi = e->data;
-  struct app *app = e->call->data;
+  struct signalfd_siginfo *fdsi = e->message;
+  struct app *app = e->receiver->object;
 
   (void) fprintf(stderr, "[signal SIGINT raised, pid %d, int %d, ptr %p\n", fdsi->ssi_pid, fdsi->ssi_int, (void *) fdsi->ssi_ptr);
   reactor_halt(app->reactor);
@@ -59,7 +61,7 @@ void signal_handler(reactor_event *e)
 
 void resolver_handler(reactor_event *e)
 {
-  reactor_resolver *s = e->data;
+  reactor_resolver *s = e->sender;
   int i;
   struct addrinfo *ai;
   struct sockaddr_in *sin;
@@ -89,7 +91,7 @@ void resolver_handler(reactor_event *e)
 
 void resolver_handler_simple(reactor_event *e)
 {
-  reactor_resolver *s = e->data;
+  reactor_resolver *s = e->sender;
   struct addrinfo *ai = s->list[0]->ar_result;
   char name[256];
 
@@ -118,26 +120,26 @@ int main()
     err(1, "reactor_resolver_new");
   */
 
-  s = reactor_resolver_new(app.reactor, resolver_handler,
+  s = reactor_resolver_new(app.reactor,
 			   (struct gaicb *[]){
 			     (struct gaicb[]){{.ar_name = "www.sunet.se"}},
 			     (struct gaicb[]){{.ar_name = "www.dontexist.blah"}}
-			   }, 2, &app);
+			   }, 2, &app, resolver_handler, NULL);
   if (!s)
     err(1, "reactor_resolver_new");
 
-  app.signal = reactor_signal_new(app.reactor, signal_handler, SIGINT, &app);
+  app.signal = reactor_signal_new(app.reactor, SIGINT, &app, signal_handler, NULL);
   if (!app.signal)
     err(1, "reactor_signal_new");
   
-  app.socket = reactor_socket_new(app.reactor, socket_handler, STDIN_FILENO, &app);
+  app.socket = reactor_socket_new(app.reactor, STDIN_FILENO, &app, socket_handler, NULL);
   if (!app.socket)
     err(1, "reactor_socket_new");
-
-  app.timer = reactor_timer_new(app.reactor, timer_handler, 1000000000, &app);
+  
+  app.timer = reactor_timer_new(app.reactor, 1000000000, &app, timer_handler, NULL);
   if (!app.timer)
     err(1, "reactor_timer_new");
-  
+
   e = reactor_run(app.reactor);
   if (e == -1)
     err(1, "reactor_run");

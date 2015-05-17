@@ -14,8 +14,8 @@ struct reactor_timer
   reactor_call        main;
 };
 
-reactor_timer *reactor_timer_new(reactor *, reactor_handler *, uint64_t, void *);
-int            reactor_timer_construct(reactor *, reactor_timer *, reactor_handler *, uint64_t, void *);
+reactor_timer *reactor_timer_new(reactor *, uint64_t, void *, reactor_handler *, void *);
+int            reactor_timer_construct(reactor *, reactor_timer *, uint64_t, void *, reactor_handler *, void *);
 int            reactor_timer_destruct(reactor_timer *);
 int            reactor_timer_delete(reactor_timer *);
 int            reactor_timer_interval(reactor_timer *, uint64_t);
