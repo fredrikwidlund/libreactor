@@ -59,7 +59,7 @@ int reactor_signal_destruct(reactor_signal *s)
       e = epoll_ctl(s->reactor->epollfd, EPOLL_CTL_DEL, s->descriptor, &s->ev);
       if (e == -1)
 	return -1;
-      
+
       e = close(s->descriptor);
       if (e == -1)
 	return -1;
@@ -73,7 +73,7 @@ int reactor_signal_destruct(reactor_signal *s)
 int reactor_signal_delete(reactor_signal *s)
 {
   int e;
-  
+
   e = reactor_signal_destruct(s);
   if (e == -1)
     return -1;

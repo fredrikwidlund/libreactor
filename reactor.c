@@ -15,7 +15,7 @@ reactor *reactor_new()
   r = malloc(sizeof *r);
   if (!r)
     return NULL;
-    
+  
   e = reactor_construct(r);
   if (e == -1)
     {
@@ -28,7 +28,7 @@ reactor *reactor_new()
 
 int reactor_construct(reactor *r)
 {
-  r->epollfd = epoll_create1(EPOLL_CLOEXEC);
+  *r = (reactor) {.epollfd = epoll_create1(EPOLL_CLOEXEC)};
   if (r->epollfd == -1)
     return -1;
 
