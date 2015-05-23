@@ -47,7 +47,11 @@ void socket_handler(reactor_event *e)
 
 void timer_handler(reactor_event *e)
 {
+  struct app *app = e->receiver->object;
+
   (void) fprintf(stderr, "[timer timeout]\n");
+
+  reactor_halt(app->reactor);
 }
 
 void signal_handler(reactor_event *e)

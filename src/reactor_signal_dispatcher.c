@@ -81,6 +81,6 @@ void reactor_signal_dispatcher_handler(reactor_event *e)
 {
   struct signalfd_siginfo *fdsi = e->message;
 
-  if (fdsi->ssi_pid == getpid() && fdsi->ssi_uid == getuid())
+  if (fdsi->ssi_pid == (uint32_t) getpid() && fdsi->ssi_uid == getuid())
     reactor_dispatch_call(reactor_signal_dispatcher_singleton, (reactor_call *) fdsi->ssi_ptr, REACTOR_SIGNAL_DISPATCHER_RAISED, fdsi); 
 }

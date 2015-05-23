@@ -52,6 +52,8 @@ int reactor_client_construct(reactor *r, reactor_client *c, int type, char *name
 
 int reactor_client_destruct(reactor_client *c)
 {
+  (void) c;
+  
   return 0;
 }
 
