@@ -39,7 +39,7 @@ int main()
   reactor_client *c;
   
   assert(r = reactor_new());
-  assert(c = reactor_client_new(r, SOCK_STREAM, "localhost", "http", c, client_handler, NULL));
+  assert(c = reactor_client_new(r, SOCK_STREAM, "localhost", "http", client_handler, NULL));
   assert(reactor_run(r) == 0);  
   assert(reactor_client_delete(c) == 0);
   assert(reactor_delete(r) == 0);

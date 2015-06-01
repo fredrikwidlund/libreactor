@@ -7,88 +7,125 @@
 
 #include "buffer.h"
 #include "vector.h"
-#include "reactor.h"
+#include "reactor_core.h"
 #include "reactor_fd.h"
 
-reactor_fd *reactor_fd_new(reactor *r, int fd, void *o, reactor_handler *h, void *data)
+reactor_fd *reactor_fd_new(reactor *r, int descriptor, reactor_handler *handler, void *state)
 {
-  reactor_fd *d;
+  reactor_fd *fd;
   int e;
   
-  d = malloc(sizeof *d);
-  e = reactor_fd_construct(r, d, fd, o, h, data);
+  fd = malloc(sizeof *fd);
+  e = reactor_fd_init(r, fd, descriptor, handler, state);
+  fd->flags |= REACTOR_FD_FLAG_ALLOCATED;
   if (e == -1)
     {
-      (void) reactor_fd_destruct(d);
+      (void) reactor_fd_delete(fd);
       return NULL;
     }
-  
-  return d;
+
+  return fd;
 }
 
-int reactor_fd_construct(reactor *r, reactor_fd *d, int fd, void *o, reactor_handler *h, void *data)
+int reactor_fd_init(reactor *r, reactor_fd *fd, int descriptor, reactor_handler *handler, void *state)
 {
   int e;
   
-  *d = (reactor_fd) {.user = {.object = o, .handler = h, .data = data},
-		     .reactor = r, .descriptor = fd,
-		     .ev = {.events = EPOLLIN | EPOLLET, .data.ptr = &d->main},
-		     .main = {.object = d, .handler = reactor_fd_handler}};
-  e = fcntl(fd, F_SETFL, O_NONBLOCK);
+  *fd = (reactor_fd) {.descriptor = descriptor,
+		      .reactor = r,
+		      .ev = {.events = EPOLLIN | EPOLLET, .data.ptr = &fd->main},
+		      .user = {.handler = handler, .state = state},
+		      .main = {.handler = reactor_fd_handler, .state = fd}};
+  e = fcntl(fd->descriptor, F_SETFL, O_NONBLOCK);
   if (e == -1)
     return -1;
 
-  return epoll_ctl(r->epollfd, EPOLL_CTL_ADD, fd, &d->ev);
+  e = epoll_ctl(r->epollfd, EPOLL_CTL_ADD, fd->descriptor, &fd->ev);
+  if (e == -1)
+    return -1;
+
+  fd->flags |= REACTOR_FD_FLAG_ACTIVE;
+  return 0;
 }
 
-int reactor_fd_destruct(reactor_fd *d)
+int reactor_fd_destruct(reactor_fd *fd)
 {
   int e;
 
-  if (d->descriptor >= 0)
+  if (fd->descriptor >= 0)
     {
-      e = epoll_ctl(d->reactor->epollfd, EPOLL_CTL_DEL, d->descriptor, &d->ev);
+      e = epoll_ctl(fd->reactor->epollfd, EPOLL_CTL_DEL, fd->descriptor, &fd->ev);
       if (e == -1)
 	return -1;
       
-      e = close(d->descriptor);
+      e = close(fd->descriptor);
       if (e == -1)
 	return -1;
       
-      d->descriptor = -1;
+      fd->descriptor = -1;
     }
   
   return 0;
 }
 
-int reactor_fd_delete(reactor_fd *d)
+int reactor_fd_delete(reactor_fd *fd)
 {
-  int e;
+  int e, allocated;
+
+  if (fd->reactor->flags & REACTOR_FLAG_EVENT)
+    {
+      if (fd->flags & REACTOR_FLAG_DELETE)
+	return 0;
+
+      fd->flags &= ~(REACTOR_FD_FLAG_ACTIVE | REACTOR_FLAG_DELETE);
+      return reactor_schedule(fd->reactor, &fd->main);
+    }
+
+  if (fd->descriptor >= 0)
+    {
+      e = epoll_ctl(fd->reactor->epollfd, EPOLL_CTL_DEL, fd->descriptor, &fd->ev);
+      if (e == -1)
+	return -1;
+      
+      e = close(fd->descriptor);
+      if (e == -1)
+	return -1;
+    }
+
+  allocated = fd->flags & REACTOR_FD_FLAG_ALLOCATED;
+  reactor_dispatch(fd, &fd->user, REACTOR_FD_DELETE, NULL);
+  if (allocated)
+    free(fd);
   
-  e = reactor_fd_destruct(d);
-  if (e == -1)
-    return -1;
-  
-  free(d);
   return 0;
 }
 
-void reactor_fd_handler(reactor_event *e)
+void reactor_fd_handler(void *state, reactor_event *event)
 {
-  reactor_fd *d = e->receiver->object;
-  int mask =
-    (e->type & EPOLLIN ? REACTOR_FD_READ : 0) |
-    (e->type & EPOLLOUT ? REACTOR_FD_WRITE : 0);
+  reactor_fd *fd = state;
+  int events;
   
-  reactor_dispatch_call(d, &d->user, mask, NULL);
+  switch (event->type)
+    {
+    case REACTOR_EVENT:
+      events = *(int *) event->data;
+      if (events & EPOLLIN && fd->flags & REACTOR_FD_FLAG_ACTIVE)
+	reactor_dispatch(fd, &fd->user, REACTOR_FD_READ, NULL);
+      
+      if (events & EPOLLERR && fd->flags & REACTOR_FD_FLAG_ACTIVE)
+	  reactor_dispatch(fd, &fd->user, REACTOR_FD_ERROR, NULL);
+  
+      if (events & EPOLLOUT && fd->flags & REACTOR_FD_FLAG_ACTIVE)
+	reactor_dispatch(fd, &fd->user, REACTOR_FD_WRITE, NULL);
+      break;
+    case REACTOR_SCHEDULED_CALL:
+      reactor_fd_delete(fd);
+      break;
+    }
 }
 
-int reactor_fd_descriptor(reactor_fd *d)
-{
-  return d->descriptor;
-}
-
-int reactor_fd_events(reactor_fd *d, int mask)
+/*
+int reactor_fd_events(reactor_fd *fd, int mask)
 {
   d->ev.events =
     (mask & REACTOR_FD_READ ? EPOLLIN : 0) |
@@ -97,3 +134,4 @@ int reactor_fd_events(reactor_fd *d, int mask)
 
   return epoll_ctl(d->reactor->epollfd, EPOLL_CTL_MOD, d->descriptor, &d->ev);
 }
+*/

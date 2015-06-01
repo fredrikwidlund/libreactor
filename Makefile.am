@@ -1,15 +1,16 @@
-LIB_CFLAGS = -O3 -std=gnu11
+LIB_CFLAGS = -O3 -std=gnu11 -g
 
 LIB_TEST_CFLAGS = -O0 -g -ftest-coverage -fprofile-arcs -std=gnu11 -I/opt/local/include -Isrc
-#LDADD_TEST_FLAGS = -L. -lcmocka
 
 AUTOMAKE_OPTIONS = subdir-objects
 ACLOCAL_AMFLAGS = ${ACLOCAL_FLAGS} -I m4
 
-SOURCE_FILES = src/buffer.c src/reactor.c src/reactor_client.c src/reactor_fd.c src/reactor_resolver.c src/reactor_signal.c \
-	src/reactor_signal_dispatcher.c src/reactor_socket.c src/reactor_timer.c src/vector.c
-HEADER_FILES = src/buffer.h src/reactor.h src/reactor_client.h src/reactor_fd.h src/reactor_resolver.h src/reactor_signal.h \
-	src/reactor_signal_dispatcher.h src/reactor_socket.h src/reactor_timer.h src/vector.h
+SOURCE_FILES = src/buffer.c src/vector.c src/reactor_core.c src/reactor_fd.c
+#src/reactor_client.c src/reactor_fd.c src/reactor_resolver.c src/reactor_signal.c \
+#	src/reactor_signal_dispatcher.c src/reactor_socket.c src/reactor_timer.c src/vector.c
+HEADER_FILES = src/buffer.h src/vector.h src/reactor_core.h src/reactor_fd.h
+#src/reactor_client.h src/reactor_fd.h src/reactor_resolver.h src/reactor_signal.h \
+#	src/reactor_signal_dispatcher.h src/reactor_socket.h src/reactor_timer.h src/vector.h
 
 lib_LTLIBRARIES = libreactor.la
 libreactor_la_CFLAGS = $(LIB_CFLAGS)
@@ -24,15 +25,18 @@ TESTS = $(BUILD_TESTS) test/test_valgrind.sh
 
 check_PROGRAMS = $(BUILD_TESTS)
 check_SCRIPTS = test
-TEST_LD_WRAP = -Wl,--wrap=malloc -Wl,--wrap=calloc -Wl,--wrap=realloc -Wl,--wrap=aligned_alloc
 
-AM_CFLAGS = $(LIB_TEST_CFLAGS)
-AM_LDFLAGS = $(LDADD_TEST_FLAGS) $(TEST_LD_WRAP) -L. -lreactor_test -lanl
+test_test1_CFLAGS = $(LIB_TEST_CFLAGS)
+test_test1_LDFLAGS = -L. -lreactor_test -lanl
 
-test_test1_SOURCES = test/test1.c test/test_util.c
-test_test2_SOURCES = test/test2.c test/test_util.c
-test_test3_SOURCES = test/test3.c test/test_util.c
-test_test4_SOURCES = test/test4.c test/test_util.c
+test_test2_CFLAGS = $(LIB_TEST_CFLAGS)
+test_test2_LDFLAGS = -L. -lreactor_test -lanl
+
+test_test3_CFLAGS = $(LIB_TEST_CFLAGS)
+test_test3_LDFLAGS = -L. -lreactor_test -lanl
+
+test_test4_CFLAGS = $(LIB_TEST_CFLAGS)
+test_test4_LDFLAGS = -L. -lreactor_test -lanl
 
 headerfilesdir = $(includedir)/reactor
 headerfiles_HEADERS = $(HEADER_FILES)

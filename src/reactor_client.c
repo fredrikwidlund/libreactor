@@ -74,35 +74,43 @@ void reactor_client_resolver_handler(reactor_event *event)
   reactor_client *c = event->receiver->object;
   reactor_resolver *s = event->sender;
   int e;
-  
+
   if (c->state != REACTOR_CLIENT_STATE_RESOLVING || !s->list[0]->ar_result)
     {
       reactor_client_error(c);
       return;
     }
   c->state = REACTOR_CLIENT_STATE_RESOLVED;
- 
+  
   e = reactor_client_connect(c);
   if (e == -1)
     {
       reactor_client_error(c);
       return;
     }
-  c->state = REACTOR_CLIENT_STATE_CONNECTING;
 }
 
-void reactor_client_socket_handler(reactor_event *event)
+void reactor_client_socket_handler(reactor_event *e)
 {
-  reactor_client *c = event->receiver->object;
-  
-  if (c->state != REACTOR_CLIENT_STATE_CONNECTING)
+  reactor_client *c = e->receiver->object;
+
+  switch (e->type)
     {
+    case REACTOR_SOCKET_WRITE:
+      if (c->state == REACTOR_CLIENT_STATE_CONNECTING)
+	c->state = REACTOR_CLIENT_STATE_CONNECTED;
+      reactor_dispatch_call(c, &c->user, REACTOR_CLIENT_WRITE, NULL);
+      break;
+    case REACTOR_SOCKET_READ:
+      reactor_dispatch_call(c, &c->user, REACTOR_CLIENT_READ, e->message);
+      break;
+    case REACTOR_SOCKET_CLOSE:
+      reactor_dispatch_call(c, &c->user, REACTOR_CLIENT_CLOSE, NULL);
+      break;
+    case REACTOR_SOCKET_ERROR:
       reactor_client_error(c);
-      return;
+      break;
     }
-  
-  c->state = REACTOR_CLIENT_STATE_CONNECTED;
-  reactor_dispatch_call(c, &c->user, REACTOR_CLIENT_CONNECTED, NULL);
 }
 
 int reactor_client_update(reactor_client *c)
@@ -176,3 +184,18 @@ int reactor_client_connect(reactor_client *c)
   
   return 0;
 }
+
+int reactor_client_disconnect(reactor_client *c)
+{
+  (void) reactor_socket_delete(c->socket);
+  c->socket = NULL;
+  c->state = REACTOR_CLIENT_STATE_CLOSED;
+
+  return 0;
+}
+
+int reactor_client_write(reactor_client *c, char *data, size_t size)
+{
+  return reactor_socket_write(c->socket, data, size);
+}
+

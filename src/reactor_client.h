@@ -1,7 +1,13 @@
 #ifndef REACTOR_CLIENT_H_INCLUDED
 #define REACTOR_CLIENT_H_INCLUDE
 
-#define REACTOR_CLIENT_CONNECTED 1
+enum reactor_client_event
+{
+  REACTOR_CLIENT_ERROR = 0,
+  REACTOR_CLIENT_READ,
+  REACTOR_CLIENT_WRITE,
+  REACTOR_CLIENT_CLOSE
+};
 
 enum reactor_client_state
 {
@@ -10,6 +16,7 @@ enum reactor_client_state
   REACTOR_CLIENT_STATE_RESOLVED,
   REACTOR_CLIENT_STATE_CONNECTING,
   REACTOR_CLIENT_STATE_CONNECTED,
+  REACTOR_CLIENT_STATE_CLOSED,
   REACTOR_CLIENT_STATE_ERROR
 };
 
@@ -38,6 +45,8 @@ int              reactor_client_update(reactor_client *);
 void             reactor_client_error(reactor_client *);
 int              reactor_client_resolve(reactor_client *);
 int              reactor_client_connect(reactor_client *);
+int              reactor_client_disconnect(reactor_client *);
+int              reactor_client_write(reactor_client *, char *, size_t);
 
 #endif /* REACTOR_CLIENT_H_INCLUDED */
 

@@ -35,6 +35,8 @@ int reactor_socket_construct(reactor *r, reactor_socket *s, int descriptor, void
   e = reactor_fd_construct(r, &s->fd, descriptor, s, reactor_socket_handler, NULL);
   if (e == -1)
     return -1;
+
+  buffer_init(&s->output_buffer);
   
   return 0;
 }
@@ -59,12 +61,16 @@ int reactor_socket_delete(reactor_socket *s)
 void reactor_socket_handler(reactor_event *e)
 {
   reactor_socket *s = e->receiver->object;
-  char buffer[4096];
+  char buffer[65536];
   ssize_t n;
-
+  
   if (e->type & REACTOR_FD_WRITE)
-    reactor_dispatch_call(s, &s->user, REACTOR_SOCKET_WRITE_READY, NULL);
-
+    {
+      reactor_socket_flush(s);
+      if (!buffer_size(&s->output_buffer))
+	reactor_dispatch_call(s, &s->user, REACTOR_SOCKET_WRITE, NULL);
+    }
+  
   if (e->type & REACTOR_FD_READ)
     {
       while (1)
@@ -82,7 +88,7 @@ void reactor_socket_handler(reactor_event *e)
 	  if (n == -1)
 	    err(1, "read");
 	  
-	  reactor_dispatch_call(s, &s->user, REACTOR_SOCKET_DATA, (reactor_data[]){{.base = buffer, .size = n}});
+	  reactor_dispatch_call(s, &s->user, REACTOR_SOCKET_READ, (reactor_data[]){{.base = buffer, .size = n}});
 	}
     }
 }
@@ -90,4 +96,43 @@ void reactor_socket_handler(reactor_event *e)
 int reactor_socket_write_notify(reactor_socket *s)
 {
   return reactor_fd_events(&s->fd, REACTOR_FD_READ | REACTOR_FD_WRITE);
+}
+
+int reactor_socket_write(reactor_socket *s, char *data, size_t size)
+{
+  ssize_t n;
+  int e;
+  
+  n = write(reactor_fd_descriptor(&s->fd), data, size);
+  if (n == -1)
+    {
+      if (errno != EAGAIN)
+	err(1, "write"); /* reactor_socket_error(...) */
+      n = 0;
+    }
+
+  if (n < (ssize_t) size)
+    {
+      e = buffer_insert(&s->output_buffer, buffer_size(&s->output_buffer), data + n, size - n);
+      if (e == -1)
+	err(1, "buffer_insert"); /* reactor_socket_error(...) */
+      return reactor_socket_write_notify(s);
+    }
+
+  return 0;
+}
+
+void reactor_socket_flush(reactor_socket *s)
+{
+  ssize_t n;
+
+  n = write(reactor_fd_descriptor(&s->fd), buffer_data(&s->output_buffer), buffer_size(&s->output_buffer));
+  if (n == -1)
+    {
+      if (errno != EAGAIN)
+	err(1, "write");
+      n = 0;
+    }
+
+  buffer_erase(&s->output_buffer, 0, n);
 }
