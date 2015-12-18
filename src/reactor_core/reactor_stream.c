@@ -145,8 +145,6 @@ int reactor_stream_printf(reactor_stream *stream, const char *format, ...)
   return 0;
 }
 
-/*******************************/
-
 void reactor_stream_flush(reactor_stream *stream)
 {
   ssize_t n;

@@ -51,11 +51,7 @@ void reactor_stream_read(reactor_stream *);
 int  reactor_stream_write(reactor_stream *, char *, size_t);
 int  reactor_stream_printf(reactor_stream *, const char *, ...);
 void reactor_stream_flush(reactor_stream *);
-
-void reactor_stream_write_notify(reactor_stream *);
-void reactor_stream_shutdown(reactor_stream *);
 void reactor_stream_close(reactor_stream *);
-
 void reactor_stream_data_init(reactor_stream_data *, char *, size_t);
 void reactor_stream_data_consume(reactor_stream_data *, size_t);
 
