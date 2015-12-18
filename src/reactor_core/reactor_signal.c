@@ -1,8 +1,7 @@
-#include <stdlib.h>
-#include <stdint.h>
 #include <unistd.h>
 #include <signal.h>
 #include <sys/signalfd.h>
+
 #include <dynamic.h>
 
 #include "reactor_user.h"

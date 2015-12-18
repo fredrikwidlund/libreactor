@@ -1,10 +1,7 @@
-#include <stdio.h>
-#include <stdint.h>
-#include <syslog.h>
 #include <fcntl.h>
 #include <unistd.h>
 #include <sys/epoll.h>
-#include <sys/socket.h>
+
 #include <dynamic.h>
 
 #include "reactor_user.h"

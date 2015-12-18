@@ -1,17 +1,7 @@
-#define _GNU_SOURCE
-
-/* STRIP */
-#include <stdio.h>
-#include <stdlib.h>
 #include <unistd.h>
 #include <signal.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <err.h>
-#include <errno.h>
-#include <sys/epoll.h>
 #include <sys/signalfd.h>
-#include <arpa/inet.h>
+
 #include <dynamic.h>
 
 #include "reactor_user.h"

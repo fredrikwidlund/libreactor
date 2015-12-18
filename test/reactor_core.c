@@ -1,13 +1,8 @@
-#define _GNU_SOURCE
-
-#include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <setjmp.h>
 #include <signal.h>
-#include <netdb.h>
-#include <sys/socket.h>
 
 #include <cmocka.h>
 #include <dynamic.h>

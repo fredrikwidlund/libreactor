@@ -1,15 +1,13 @@
-#define _GNU_SOURCE
-
 #include <stdlib.h>
-#include <stdint.h>
 #include <stdarg.h>
+#include <stdint.h>
 #include <setjmp.h>
+#include <unistd.h>
+#include <string.h>
 #include <signal.h>
-#include <netdb.h>
-#include <sys/socket.h>
 
-#include <dynamic.h>
 #include <cmocka.h>
+#include <dynamic.h>
 
 #include "reactor_core.h"
 

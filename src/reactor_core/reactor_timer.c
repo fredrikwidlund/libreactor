@@ -1,7 +1,7 @@
-#include <stdlib.h>
 #include <stdint.h>
 #include <unistd.h>
 #include <sys/timerfd.h>
+
 #include <dynamic.h>
 
 #include "reactor_user.h"
