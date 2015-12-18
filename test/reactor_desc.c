@@ -69,7 +69,7 @@ void coverage()
   env env;
   int e, fds[2];
 
-  env = (struct env) {0};
+  bzero(&env, sizeof env);
 
   reactor_core_construct();
   e = pipe(fds);
