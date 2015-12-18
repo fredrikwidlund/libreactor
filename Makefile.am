@@ -1,5 +1,5 @@
 ACLOCAL_AMFLAGS = ${ACLOCAL_FLAGS} -I m4
-AM_CFLAGS = -std=gnu11 -O3 -flto -fuse-linker-plugin -I$(srcdir)/src/picohttpparser
+AM_CFLAGS = -std=gnu11 -O3 -flto -fuse-linker-plugin
 AM_LDFLAGS = -static
 
 SOURCE_FILES = \
@@ -38,7 +38,7 @@ maintainer-clean-local:; rm -rf autotools m4 libreactor_core-?.?.?
 
 ### unit tests ###
 
-CHECK_CFLAGS = -std=gnu11 -O0 -g -ftest-coverage -fprofile-arcs -I$(srcdir)/src -I$(srcdir)/src/picohttpparser
+CHECK_CFLAGS = -std=gnu11 -O0 -g -ftest-coverage -fprofile-arcs -I$(srcdir)/src
 CHECK_LDADD = -L. -lreactor_core_test -ldynamic -lcmocka
 CHECK_LDFLAGS_EXTRA = \
 -Wl,--wrap=malloc \
