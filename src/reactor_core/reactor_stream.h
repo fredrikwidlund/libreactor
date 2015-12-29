@@ -49,6 +49,8 @@ void reactor_stream_error(reactor_stream *);
 void reactor_stream_event(void *, int, void *);
 void reactor_stream_read(reactor_stream *);
 int  reactor_stream_write(reactor_stream *, char *, size_t);
+int  reactor_stream_puts(reactor_stream *, char *);
+int  reactor_stream_putu(reactor_stream *, uint32_t);
 int  reactor_stream_printf(reactor_stream *, const char *, ...);
 void reactor_stream_flush(reactor_stream *);
 void reactor_stream_close(reactor_stream *);
