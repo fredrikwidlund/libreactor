@@ -17,10 +17,15 @@ enum REACTOR_STREAM_EVENTS
 
 enum REACTOR_STREAM_STATE
 {
-  REACTOR_STREAM_CLOSED = 0,
+  REACTOR_STREAM_CLOSED          = 0,
   REACTOR_STREAM_OPEN,
   REACTOR_STREAM_LINGER,
   REACTOR_STREAM_CLOSING
+};
+
+enum REACTOR_STREAM_FLAGS
+{
+  REACTOR_STREAM_NODELAY         = 0x01
 };
 
 typedef struct reactor_stream reactor_stream;
@@ -32,7 +37,6 @@ struct reactor_stream
   int           flags;
   buffer        input;
   buffer        output;
-  size_t        written;
 };
 
 typedef struct reactor_stream_data reactor_stream_data;
@@ -45,6 +49,7 @@ struct reactor_stream_data
 void reactor_stream_init(reactor_stream *, reactor_user_call *, void *);
 void reactor_stream_user(reactor_stream *, reactor_user_call *, void *);
 int  reactor_stream_open(reactor_stream *, int);
+int  reactor_stream_set_nodelay(reactor_stream *);
 void reactor_stream_error(reactor_stream *);
 void reactor_stream_event(void *, int, void *);
 void reactor_stream_read(reactor_stream *);

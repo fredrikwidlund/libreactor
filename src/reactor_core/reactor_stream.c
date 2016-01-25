@@ -4,7 +4,8 @@
 #include <string.h>
 #include <unistd.h>
 #include <errno.h>
-
+#include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <dynamic.h>
 
 #include "reactor_user.h"
@@ -26,6 +27,8 @@ void reactor_stream_user(reactor_stream *stream, reactor_user_call *call, void *
   reactor_user_init(&stream->user, call, state);
 }
 
+
+// XXX Add event mask as argument?
 int reactor_stream_open(reactor_stream *stream, int fd)
 {
   int e;
@@ -40,6 +43,18 @@ int reactor_stream_open(reactor_stream *stream, int fd)
   reactor_desc_events(&stream->desc, REACTOR_DESC_READ | REACTOR_DESC_WRITE);
   stream->flags |= REACTOR_STREAM_WRITE_BLOCKED;
   stream->state = REACTOR_STREAM_OPEN;
+  return 0;
+}
+
+int reactor_stream_set_nodelay(reactor_stream *stream)
+{
+  int e;
+
+  e = setsockopt(stream->desc.fd, IPPROTO_TCP, TCP_NODELAY, (int[]){1}, sizeof(int));
+  if (e == -1)
+    return -1;
+
+  stream->flags |= REACTOR_STREAM_NODELAY;
   return 0;
 }
 
@@ -131,14 +146,14 @@ int reactor_stream_puts(reactor_stream *stream, char *string)
 
 int reactor_stream_putu(reactor_stream *stream, uint32_t n)
 {
-  int e;
-  uint32_t pow10[] = {0, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000};
-  char digits[200] =
+  static const uint32_t pow10[] = {0, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000};
+  static const char digits[200] =
     "0001020304050607080910111213141516171819202122232425262728293031323334353637383940414243444546474849"
     "5051525354555657585960616263646566676869707172737475767778798081828384858687888990919293949596979899";
   uint32_t t, size, x;
   buffer *b;
   char *base;
+  int e;
 
   t = (32 - __builtin_clz(n | 1)) * 1233 >> 12;
   size = t - (n < pow10[t]) + 1;
@@ -214,8 +229,9 @@ void reactor_stream_flush(reactor_stream *stream)
           reactor_stream_error(stream);
           return;
         }
-      stream->written += n;
       buffer_erase(&stream->output, 0, n);
+      if (stream->flags & REACTOR_STREAM_NODELAY && n > 1460)
+        (void) reactor_stream_set_nodelay(stream);
     }
 
   if (stream->state == REACTOR_STREAM_OPEN)
