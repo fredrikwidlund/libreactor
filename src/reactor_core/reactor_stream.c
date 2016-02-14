@@ -27,8 +27,6 @@ void reactor_stream_user(reactor_stream *stream, reactor_user_call *call, void *
   reactor_user_init(&stream->user, call, state);
 }
 
-
-// XXX Add event mask as argument?
 int reactor_stream_open(reactor_stream *stream, int fd)
 {
   int e;
@@ -40,7 +38,7 @@ int reactor_stream_open(reactor_stream *stream, int fd)
   if (e == -1)
     return -1;
 
-  reactor_desc_events(&stream->desc, REACTOR_DESC_READ | REACTOR_DESC_WRITE);
+  reactor_desc_events(&stream->desc, REACTOR_DESC_READ);
   stream->flags |= REACTOR_STREAM_WRITE_BLOCKED;
   stream->state = REACTOR_STREAM_OPEN;
   return 0;
@@ -131,6 +129,9 @@ void reactor_stream_read(reactor_stream *stream)
           reactor_user_dispatch(&stream->user, REACTOR_STREAM_DATA, &data);
           buffer_erase(&stream->input, 0, buffer_size(&stream->input) - data.size);
         }
+
+      if ((size_t) n < sizeof buffer)
+	break;
     }
 }
 

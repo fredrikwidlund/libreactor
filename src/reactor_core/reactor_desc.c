@@ -21,10 +21,10 @@ int reactor_desc_open(reactor_desc *desc, int fd)
   e = fcntl(fd, F_SETFL, O_NONBLOCK);
   if (e == -1)
     return -1;
-
+  
   desc->fd = fd;
   desc->state = REACTOR_DESC_OPEN;
-  desc->events = REACTOR_DESC_READ | REACTOR_DESC_WRITE;
+  desc->events = REACTOR_DESC_READ;
   desc->events_saved = desc->events;
 
   return reactor_core_add(desc->fd, desc->events, desc);
