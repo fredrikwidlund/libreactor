@@ -38,8 +38,7 @@ int reactor_stream_open(reactor_stream *stream, int fd)
   if (e == -1)
     return -1;
 
-  reactor_desc_events(&stream->desc, REACTOR_DESC_READ);
-  stream->flags |= REACTOR_STREAM_WRITE_BLOCKED;
+  reactor_desc_events(&stream->desc, REACTOR_DESC_READ | REACTOR_DESC_WRITE);
   stream->state = REACTOR_STREAM_OPEN;
   return 0;
 }
@@ -69,7 +68,7 @@ void reactor_stream_event(void *state, int type, void *data)
   (void) data;
   stream = state;
 
-  if (!type)
+  if (type & REACTOR_DESC_ERROR)
     {
       reactor_stream_error(stream);
       return;
@@ -84,17 +83,26 @@ void reactor_stream_event(void *state, int type, void *data)
       return;
     }
 
+  if ((stream->state == REACTOR_STREAM_OPEN || stream->state == REACTOR_STREAM_LINGER) && type & REACTOR_DESC_WRITE)
+    {
+      if (~stream->flags & REACTOR_STREAM_ESTABLISHED)
+        {
+          stream->flags |= REACTOR_STREAM_ESTABLISHED;
+          reactor_user_dispatch(&stream->user, REACTOR_STREAM_CONNECT, stream);
+        }
+      else if (stream->flags & REACTOR_STREAM_WRITE_AGAIN)
+        {
+          stream->flags &= ~REACTOR_STREAM_WRITE_AGAIN;
+          reactor_stream_flush(stream);
+          if (~stream->flags & REACTOR_STREAM_WRITE_AGAIN)
+            reactor_user_dispatch(&stream->user, REACTOR_STREAM_WRITE_AVAILABLE, stream);
+        }
+    }
+
   if (stream->state == REACTOR_STREAM_OPEN && type & REACTOR_DESC_READ)
     reactor_stream_read(stream);
 
-  if (type & REACTOR_DESC_WRITE)
-    {
-      stream->flags &= ~REACTOR_STREAM_WRITE_BLOCKED;
-      if (stream->state == REACTOR_STREAM_OPEN)
-        reactor_user_dispatch(&stream->user, REACTOR_STREAM_WRITE_AVAILABLE, stream);
-    }
-
-  if (~stream->flags & REACTOR_STREAM_WRITE_BLOCKED)
+  if (stream->state == REACTOR_STREAM_OPEN && ~stream->flags & REACTOR_STREAM_WRITE_AGAIN)
     reactor_stream_flush(stream);
 }
 
@@ -131,7 +139,7 @@ void reactor_stream_read(reactor_stream *stream)
         }
 
       if ((size_t) n < sizeof buffer)
-	break;
+        break;
     }
 }
 
@@ -215,14 +223,14 @@ void reactor_stream_flush(reactor_stream *stream)
   fd = reactor_desc_fd(&stream->desc);
   while (buffer_size(&stream->output))
     {
-      stream->flags &= ~REACTOR_STREAM_WRITE_BLOCKED;
+      stream->flags &= ~REACTOR_STREAM_WRITE_AGAIN;
       n = write(fd, buffer_data(&stream->output), buffer_size(&stream->output));
       if (n == -1)
         {
           if (errno == EAGAIN)
             {
-              stream->flags |= REACTOR_STREAM_WRITE_BLOCKED;
-              events = REACTOR_DESC_WRITE | REACTOR_DESC_READ;
+              stream->flags |= REACTOR_STREAM_WRITE_AGAIN;
+              events = REACTOR_DESC_READ | REACTOR_DESC_WRITE;
               reactor_desc_events(&stream->desc, events);
               return;
             }
@@ -252,6 +260,7 @@ void reactor_stream_close(reactor_stream *stream)
 
   if (buffer_size(&stream->output))
     {
+      stream->flags |= REACTOR_STREAM_WRITE_AGAIN;
       stream->state = REACTOR_STREAM_LINGER;
       reactor_desc_events(&stream->desc, REACTOR_DESC_WRITE);
     }
