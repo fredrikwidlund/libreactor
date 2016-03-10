@@ -36,7 +36,8 @@ int reactor_core_mask_from_epoll(int events)
 {
   return
     (events & EPOLLIN ? REACTOR_DESC_READ : 0) |
-    (events & EPOLLOUT ? REACTOR_DESC_WRITE : 0);
+    (events & EPOLLOUT ? REACTOR_DESC_WRITE : 0) |
+    (events & EPOLLERR ? REACTOR_DESC_ERROR : 0);
 }
 
 int reactor_core_add(int fd, int events, reactor_desc *desc)
