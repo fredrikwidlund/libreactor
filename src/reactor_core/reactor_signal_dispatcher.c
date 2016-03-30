@@ -1,12 +1,16 @@
-#include <unistd.h>
+#define _GNU_SOURCE
+
+#include <stdint.h>
 #include <signal.h>
-#include <sys/signalfd.h>
+#include <unistd.h>
+#include <string.h>
 
 #include <dynamic.h>
 
 #include "reactor_user.h"
 #include "reactor_desc.h"
 #include "reactor_core.h"
+#include "reactor_stream.h"
 #include "reactor_signal.h"
 #include "reactor_signal_dispatcher.h"
 
@@ -14,30 +18,34 @@ static __thread reactor_signal_dispatcher_singleton singleton = {.ref = 0};
 
 void reactor_signal_dispatcher_init(reactor_signal_dispatcher *dispatcher, reactor_user_call *call, void *state)
 {
+  *dispatcher = (reactor_signal_dispatcher) {.fd = -1};
   reactor_user_init(&dispatcher->user, call, state);
-  reactor_signal_init(&singleton.signal, reactor_signal_dispatcher_event, &singleton);
 }
 
-int reactor_signal_dispatcher_hold(void)
+int reactor_signal_dispatcher_open(reactor_signal_dispatcher *dispatcher)
 {
-  sigset_t mask;
   int e;
 
-  if (singleton.signal.state == REACTOR_SIGNAL_CLOSED)
+  if (!singleton.ref)
     {
-      sigemptyset(&mask);
-      sigaddset(&mask, REACTOR_SIGNAL_DISPATCHER_SIGNO);
-      e = reactor_signal_open(&singleton.signal, &mask);
+      reactor_stream_init(&singleton.stream, reactor_signal_dispatcher_event, &singleton);
+      e = pipe(singleton.pipe);
+      if (e == -1)
+        return -1;
+
+      e = reactor_stream_open(&singleton.stream, singleton.pipe[0]);
       if (e == -1)
         return -1;
     }
-
   singleton.ref ++;
+
+  dispatcher->fd = singleton.pipe[1];
   return 0;
 }
 
-void reactor_signal_dispatcher_release(void)
+void reactor_signal_dispatcher_close(reactor_signal_dispatcher *dispatcher)
 {
+  (void) dispatcher;
   if (!singleton.ref)
     return;
 
@@ -56,27 +64,42 @@ void reactor_signal_dispatcher_call(void *state, int type, void *data)
   (void) data;
 
   singleton.flags &= ~REACTOR_SIGNAL_DISPATCHER_RELEASE;
-  if (!singleton.ref && singleton.signal.state == REACTOR_SIGNAL_OPEN)
-    reactor_signal_close(&singleton.signal);
+  if (!singleton.ref && singleton.stream.state == REACTOR_STREAM_OPEN)
+    reactor_stream_close(&singleton.stream);
+  (void) close(singleton.pipe[0]);
+  (void) close(singleton.pipe[1]);
 }
 
 void reactor_signal_dispatcher_sigev(reactor_signal_dispatcher *dispatcher, struct sigevent *sigev)
 {
-  sigev->sigev_notify = SIGEV_SIGNAL;
-  sigev->sigev_signo = REACTOR_SIGNAL_DISPATCHER_SIGNO;
-  sigev->sigev_value.sival_ptr = &dispatcher->user;
+  *sigev = (struct sigevent) {0};
+  sigev->sigev_notify = SIGEV_THREAD;
+  sigev->sigev_notify_function = reactor_signal_dispatcher_notifier;
+  sigev->sigev_value.sival_ptr = dispatcher;
+}
+
+void reactor_signal_dispatcher_notifier(union sigval sival)
+{
+  reactor_signal_dispatcher *dispatcher = sival.sival_ptr;
+
+  (void) write(dispatcher->fd, &dispatcher, sizeof &dispatcher);
 }
 
 void reactor_signal_dispatcher_event(void *state, int type, void *data)
 {
-  struct signalfd_siginfo *fdsi = data;
+  reactor_stream_data *message;
   reactor_signal_dispatcher *dispatcher;
 
   (void) state;
-  if (type == REACTOR_SIGNAL_RAISE && singleton.ref)
+
+  if (type == REACTOR_STREAM_DATA)
     {
-      dispatcher = (reactor_signal_dispatcher *) fdsi->ssi_ptr;
-      if (fdsi->ssi_pid == (uint32_t) getpid() && fdsi->ssi_uid == getuid())
-        reactor_user_dispatch(&dispatcher->user, REACTOR_SIGNAL_DISPATCHER_MESSAGE, fdsi);
+      message = data;
+      while (message->size >= sizeof dispatcher)
+        {
+          memcpy(&dispatcher, message->base, sizeof dispatcher);
+          reactor_user_dispatch(&dispatcher->user, REACTOR_SIGNAL_DISPATCHER_MESSAGE, dispatcher);
+          reactor_stream_data_consume(message, sizeof dispatcher);
+        }
     }
 }
