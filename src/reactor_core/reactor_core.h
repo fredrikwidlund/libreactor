@@ -1,32 +1,28 @@
 #ifndef REACTOR_CORE_H_INCLUDED
 #define REACTOR_CORE_H_INCLUDED
 
-#ifndef REACTOR_CORE_QUEUE_SIZE
-#define REACTOR_CORE_QUEUE_SIZE 4096
-#endif
-
-enum REACTOR_CORE_EVENTS
+enum reactor_core_state
 {
-  REACTOR_CORE_ERROR = 0x00,
-  REACTOR_CORE_CALL  = 0x01
+  REACTOR_CORE_CLOSED = 0,
+  REACTOR_CORE_OPEN,
+  REACTOR_CORE_RUNNING
 };
 
 typedef struct reactor_core reactor_core;
 struct reactor_core
 {
-  int      fd;
-  int      ref;
-  vector   calls;
+  int    state;
+  vector polls;
+  vector descs;
 };
 
-int  reactor_core_construct(void);
-int  reactor_core_mask_to_epoll(int);
-int  reactor_core_mask_from_epoll(int);
-int  reactor_core_add(int, int, reactor_desc *);
-int  reactor_core_mod(int, int, reactor_desc *);
-int  reactor_core_del(int);
+int  reactor_core_open(void);
 int  reactor_core_run(void);
-void reactor_core_schedule(reactor_user_call *, void *);
-void reactor_core_destruct(void);
+void reactor_core_close(void);
+
+int  reactor_core_desc_add(reactor_desc *, int, int);
+void reactor_core_desc_remove(reactor_desc *);
+void reactor_core_desc_events(reactor_desc *, int);
+int  reactor_core_desc_fd(reactor_desc *);
 
 #endif /* REACTOR_CORE_H_INCLUDED */

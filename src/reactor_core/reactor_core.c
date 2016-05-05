@@ -1,5 +1,8 @@
+#include <stdio.h>
+#include <stdint.h>
+#include <string.h>
 #include <unistd.h>
-#include <sys/epoll.h>
+#include <poll.h>
 
 #include <dynamic.h>
 
@@ -7,97 +10,88 @@
 #include "reactor_desc.h"
 #include "reactor_core.h"
 
-static __thread reactor_core core = {.fd = -1};
+static __thread reactor_core core = {.state = REACTOR_CORE_CLOSED};
 
-int reactor_core_construct(void)
+int reactor_core_open(void)
 {
-  if (core.fd != -1)
-    return 0;
-
-  core.fd = epoll_create1(EPOLL_CLOEXEC);
-  if (core.fd == -1)
+  if (core.state != REACTOR_CORE_CLOSED)
     return -1;
 
-  core.ref = 0;
-  vector_init(&core.calls, sizeof(reactor_user));
-
+  vector_init(&core.polls, sizeof(struct pollfd));
+  vector_init(&core.descs, sizeof(reactor_desc *));
+  core.state = REACTOR_CORE_OPEN;
   return 0;
-}
-
-int reactor_core_mask_to_epoll(int events)
-{
-  return
-    EPOLLET |
-    (events & REACTOR_DESC_READ ? EPOLLIN : 0) |
-    (events & REACTOR_DESC_WRITE ? EPOLLOUT : 0);
-}
-
-int reactor_core_mask_from_epoll(int events)
-{
-  return
-    (events & EPOLLIN ? REACTOR_DESC_READ : 0) |
-    (events & EPOLLOUT ? REACTOR_DESC_WRITE : 0) |
-    (events & EPOLLERR ? REACTOR_DESC_ERROR : 0);
-}
-
-int reactor_core_add(int fd, int events, reactor_desc *desc)
-{
-  uint32_t epoll_events;
-  int e;
-
-  epoll_events = reactor_core_mask_to_epoll(events);
-  e = epoll_ctl(core.fd, EPOLL_CTL_ADD, fd, (struct epoll_event[]){{.events = epoll_events, .data.ptr = desc}});
-  if (e == -1)
-    return -1;
-
-  core.ref ++;
-  return 0;
-}
-
-int reactor_core_mod(int fd, int events, reactor_desc *desc)
-{
-  uint32_t epoll_events;
-
-  epoll_events = reactor_core_mask_to_epoll(events);
-  return epoll_ctl(core.fd, EPOLL_CTL_MOD, fd, (struct epoll_event[]){{.events = epoll_events, .data.ptr = desc}});
-}
-
-int reactor_core_del(int fd)
-{
-  core.ref --;
-  return close(fd);
 }
 
 int reactor_core_run(void)
 {
-  struct epoll_event events[REACTOR_CORE_QUEUE_SIZE];
-  ssize_t n, i;
+  struct pollfd *p;
+  int e, i, n;
 
-  while (core.ref)
+  core.state = REACTOR_CORE_RUNNING;
+  while (core.state == REACTOR_CORE_RUNNING && vector_size(&core.polls))
     {
-      n = epoll_wait(core.fd, events, REACTOR_CORE_QUEUE_SIZE, -1);
-      if (n == -1)
+      e = poll(vector_data(&core.polls), vector_size(&core.polls), -1);
+      if (e == -1)
         return -1;
 
-      for (i = 0; i < n; i ++)
-        reactor_desc_event(events[i].data.ptr, reactor_core_mask_from_epoll(events[i].events));
-
-      for (i = 0; i < (int) vector_size(&core.calls); i ++)
-        reactor_user_dispatch((reactor_user *) vector_at(&core.calls, i), REACTOR_CORE_CALL, NULL);
-      vector_erase(&core.calls, 0, vector_size(&core.calls));
+      i = 0;
+      n = vector_size(&core.polls);
+      while (i < n)
+        {
+          p = vector_at(&core.polls, i);
+          if (p->revents)
+            reactor_desc_dispatch(*(reactor_desc **) vector_at(&core.descs, i), p->revents, &p->fd);
+          i ++; // XXX only if no remove, otherwise n--
+        }
     }
 
+  core.state = REACTOR_CORE_OPEN;
   return 0;
 }
 
-void reactor_core_destruct(void)
+void reactor_core_close(void)
 {
-  (void) close(core.fd);
-  vector_clear(&core.calls);
-  core.fd = -1;
 }
 
-void reactor_core_schedule(reactor_user_call *call, void *state)
+int reactor_core_desc_add(reactor_desc *desc, int fd, int events)
 {
-  (void) vector_push_back(&core.calls, (reactor_user[]){{.call = call, .state = state}});
+  int e;
+
+  e = vector_push_back(&core.polls, (struct pollfd[]) {{.fd = fd, .events = events}});
+  if (e == -1)
+    return -1;
+
+  e = vector_push_back(&core.descs, &desc);
+  if (e == -1)
+    return -1;
+
+  desc->index = vector_size(&core.polls) - 1;
+  return 0;
+}
+
+void reactor_core_desc_events(reactor_desc *desc, int events)
+{
+  ((struct pollfd *) vector_at(&core.polls, desc->index))->events = events;
+}
+
+int reactor_core_desc_fd(reactor_desc *desc)
+{
+  return ((struct pollfd *) vector_at(&core.polls, desc->index))->fd;
+}
+
+void reactor_core_desc_remove(reactor_desc *desc)
+{
+  int last;
+
+  last = vector_size(&core.polls) - 1;
+  if (desc->index != last)
+    {
+      memcpy(vector_at(&core.polls, desc->index), vector_at(&core.polls, last), sizeof(struct pollfd));
+      memcpy(vector_at(&core.descs, desc->index), vector_at(&core.descs, last), sizeof(reactor_desc *));
+      (*(reactor_desc **) vector_at(&core.descs, desc->index))->index = desc->index;
+    }
+
+  vector_pop_back(&core.polls);
+  vector_pop_back(&core.descs);
 }
