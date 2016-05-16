@@ -9,9 +9,10 @@ enum reactor_desc_state
 
 enum reactor_desc_events
 {
-  REACTOR_DESC_READ  = POLLIN,
-  REACTOR_DESC_WRITE = POLLOUT,
-  REACTOR_DESC_ERROR = POLLERR
+  REACTOR_DESC_ERROR,
+  REACTOR_DESC_READ,
+  REACTOR_DESC_WRITE,
+  REACTOR_DESC_CLOSE
 };
 
 typedef struct reactor_desc reactor_desc;
@@ -27,6 +28,6 @@ int  reactor_desc_open(reactor_desc *, int);
 void reactor_desc_close(reactor_desc *);
 void reactor_desc_events(reactor_desc *, int);
 int  reactor_desc_fd(reactor_desc *);
-void reactor_desc_dispatch(reactor_desc *, int, void *);
+void reactor_desc_event(void *, int, void *);
 
 #endif /* REACTOR_DESC_H_INCLUDED */

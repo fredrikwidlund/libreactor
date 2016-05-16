@@ -55,7 +55,20 @@ int reactor_desc_fd(reactor_desc *desc)
   return reactor_core_desc_fd(desc);
 }
 
-void reactor_desc_dispatch(reactor_desc *state, int type, void *data)
+void reactor_desc_event(void *state, int type, void *data)
 {
-  reactor_user_dispatch(&((reactor_desc *) state)->user, type, data);
+  reactor_desc *desc = state;
+
+  if (type & POLLHUP)
+    reactor_user_dispatch(&desc->user, REACTOR_DESC_CLOSE, data);
+  else if (type & (POLLERR | POLLNVAL))
+    reactor_user_dispatch(&desc->user, REACTOR_DESC_ERROR, data);
+  else
+    {
+      if (type & POLLOUT)
+        reactor_user_dispatch(&desc->user, REACTOR_DESC_WRITE, data);
+
+      if (reactor_core_current() >= 0 && type & POLLIN)
+        reactor_user_dispatch(&desc->user, REACTOR_DESC_READ, data);
+    }
 }

@@ -3,7 +3,6 @@
 #include <stdint.h>
 #include <unistd.h>
 #include <fcntl.h>
-#include <poll.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sys/socket.h>
@@ -25,19 +24,16 @@ static char reply[] =
 void client_event(void *state, int type, void *data)
 {
   reactor_stream *stream = state;
-  reactor_stream_data *read;
 
+  (void) data;
   switch (type)
     {
     case REACTOR_STREAM_ERROR:
-      printf("error\n");
       break;
     case REACTOR_STREAM_READ:
-      read = data;
-      (void) read;
-      reactor_stream_write(stream, reply, sizeof reply - 1);
+      reactor_stream_write_direct(stream, reply, sizeof reply - 1);
       break;
-    case REACTOR_STREAM_END:
+    case REACTOR_STREAM_CLOSE:
       free(stream);
       break;
     }
@@ -55,7 +51,6 @@ void server_event(void *state, int type, void *data)
       c = accept(*fd, NULL, NULL);
       if (c >= 0)
         {
-          //(void) fcntl(c, F_SETFL, O_NONBLOCK);
           stream = malloc(sizeof *stream);
           reactor_stream_init(stream, client_event, stream);
           e = reactor_stream_open(stream, c);
@@ -73,7 +68,6 @@ int main()
   reactor_core_open();
 
   s = socket(AF_INET, SOCK_STREAM, 0);
-  //(void) fcntl(s, F_SETFL, O_NONBLOCK);
   assert(s != -1);
   assert(setsockopt(s, SOL_SOCKET, SO_REUSEPORT, (int[]){1}, sizeof(int)) == 0);
   assert(setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (int[]){1}, sizeof(int)) == 0);

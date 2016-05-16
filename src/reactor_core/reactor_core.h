@@ -12,6 +12,7 @@ typedef struct reactor_core reactor_core;
 struct reactor_core
 {
   int    state;
+  int    current;
   vector polls;
   vector descs;
 };
@@ -19,7 +20,7 @@ struct reactor_core
 int  reactor_core_open(void);
 int  reactor_core_run(void);
 void reactor_core_close(void);
-
+int  reactor_core_current(void);
 int  reactor_core_desc_add(reactor_desc *, int, int);
 void reactor_core_desc_remove(reactor_desc *);
 void reactor_core_desc_events(reactor_desc *, int);

@@ -26,7 +26,8 @@ int reactor_core_open(void)
 int reactor_core_run(void)
 {
   struct pollfd *p;
-  int e, i, n;
+  size_t i;
+  int e;
 
   core.state = REACTOR_CORE_RUNNING;
   while (core.state == REACTOR_CORE_RUNNING && vector_size(&core.polls))
@@ -35,17 +36,14 @@ int reactor_core_run(void)
       if (e == -1)
         return -1;
 
-      i = 0;
-      n = vector_size(&core.polls);
-      while (i < n)
+      for (i = 0; i < vector_size(&core.polls); i += (core.current >= 0))
         {
           p = vector_at(&core.polls, i);
+          core.current = p->fd;
           if (p->revents)
-            reactor_desc_dispatch(*(reactor_desc **) vector_at(&core.descs, i), p->revents, &p->fd);
-          i ++; // XXX only if no remove, otherwise n--
+            reactor_desc_event(*(reactor_desc **) vector_at(&core.descs, i), p->revents, &core.current);
         }
     }
-
   core.state = REACTOR_CORE_OPEN;
   return 0;
 }
@@ -54,9 +52,17 @@ void reactor_core_close(void)
 {
 }
 
+int reactor_core_current(void)
+{
+  return core.current;
+}
+
 int reactor_core_desc_add(reactor_desc *desc, int fd, int events)
 {
   int e;
+
+  if (fd < 0)
+    return -1;
 
   e = vector_push_back(&core.polls, (struct pollfd[]) {{.fd = fd, .events = events}});
   if (e == -1)
@@ -84,6 +90,8 @@ void reactor_core_desc_remove(reactor_desc *desc)
 {
   int last;
 
+  if (((struct pollfd *) vector_at(&core.polls, desc->index))->fd == core.current)
+    core.current = -1;
   last = vector_size(&core.polls) - 1;
   if (desc->index != last)
     {

@@ -19,7 +19,7 @@ enum reactor_stream_events
   REACTOR_STREAM_READ,
   REACTOR_STREAM_WRITE_BLOCKED,
   REACTOR_STREAM_WRITE_AVAILABLE,
-  REACTOR_STREAM_END
+  REACTOR_STREAM_CLOSE
 };
 
 enum reactor_stream_flags
@@ -52,6 +52,7 @@ void reactor_stream_event(void *, int, void *);
 void reactor_stream_error(reactor_stream *);
 void reactor_stream_read(reactor_stream *);
 void reactor_stream_write(reactor_stream *, void *, size_t);
+void reactor_stream_write_direct(reactor_stream *, void *, size_t);
 void reactor_stream_flush(reactor_stream *);
 
 #endif /* REACTOR_STREAM_H_INCLUDED */
