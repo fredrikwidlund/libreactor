@@ -24,6 +24,8 @@ int  reactor_core_current(void);
 int  reactor_core_desc_add(reactor_desc *, int, int);
 void reactor_core_desc_remove(reactor_desc *);
 void reactor_core_desc_events(reactor_desc *, int);
+void reactor_core_desc_set(reactor_desc *, int);
+void reactor_core_desc_clear(reactor_desc *, int);
 int  reactor_core_desc_fd(reactor_desc *);
 
 #endif /* REACTOR_CORE_H_INCLUDED */

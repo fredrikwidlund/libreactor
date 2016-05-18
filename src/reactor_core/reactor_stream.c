@@ -87,7 +87,7 @@ void reactor_stream_read(reactor_stream *stream)
   char buffer[REACTOR_STREAM_BLOCK_SIZE];
   ssize_t n;
 
-  n = recv(reactor_desc_fd(&stream->desc), buffer, sizeof buffer, MSG_DONTWAIT);
+  n = reactor_desc_read(&stream->desc, buffer, sizeof buffer);
   if (n == -1 && errno != EAGAIN)
     reactor_stream_error(stream);
   else if (n == 0)
@@ -152,10 +152,9 @@ size_t reactor_stream_desc_write(reactor_stream *stream, void *data, size_t size
       if (n == -1)
         {
           stream->flags |= REACTOR_STREAM_FLAGS_BLOCKED;
-          reactor_desc_write_notify(&stream->desc, 1);
           break;
         }
     }
-
+  reactor_desc_write_notify(&stream->desc, i != size);
   return i;
 }

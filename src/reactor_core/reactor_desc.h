@@ -23,11 +23,15 @@ struct reactor_desc
   int          index;
 };
 
-void reactor_desc_init(reactor_desc *, reactor_user_callback *, void *);
-int  reactor_desc_open(reactor_desc *, int);
-void reactor_desc_close(reactor_desc *);
-void reactor_desc_events(reactor_desc *, int);
-int  reactor_desc_fd(reactor_desc *);
-void reactor_desc_event(void *, int, void *);
+void    reactor_desc_init(reactor_desc *, reactor_user_callback *, void *);
+int     reactor_desc_open(reactor_desc *, int);
+void    reactor_desc_close(reactor_desc *);
+void    reactor_desc_events(reactor_desc *, int);
+int     reactor_desc_fd(reactor_desc *);
+void    reactor_desc_event(void *, int, void *);
+ssize_t reactor_desc_read(reactor_desc *, void *, size_t);
+void    reactor_desc_read_notify(reactor_desc *, int);
+ssize_t reactor_desc_write(reactor_desc *, void *, size_t);
+void    reactor_desc_write_notify(reactor_desc *, int);
 
 #endif /* REACTOR_DESC_H_INCLUDED */

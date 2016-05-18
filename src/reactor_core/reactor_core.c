@@ -76,9 +76,14 @@ int reactor_core_desc_add(reactor_desc *desc, int fd, int events)
   return 0;
 }
 
-void reactor_core_desc_events(reactor_desc *desc, int events)
+void reactor_core_desc_set(reactor_desc *desc, int events)
 {
-  ((struct pollfd *) vector_at(&core.polls, desc->index))->events = events;
+  ((struct pollfd *) vector_at(&core.polls, desc->index))->events |= events;
+}
+
+void reactor_core_desc_clear(reactor_desc *desc, int events)
+{
+  ((struct pollfd *) vector_at(&core.polls, desc->index))->events &= ~events;
 }
 
 int reactor_core_desc_fd(reactor_desc *desc)

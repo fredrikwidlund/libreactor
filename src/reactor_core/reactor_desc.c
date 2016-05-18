@@ -2,6 +2,7 @@
 #include <fcntl.h>
 #include <unistd.h>
 #include <poll.h>
+#include <sys/socket.h>
 
 #include <dynamic.h>
 
@@ -71,4 +72,30 @@ void reactor_desc_event(void *state, int type, void *data)
       if (reactor_core_current() >= 0 && type & POLLIN)
         reactor_user_dispatch(&desc->user, REACTOR_DESC_READ, data);
     }
+}
+
+ssize_t reactor_desc_read(reactor_desc *desc, void *data, size_t size)
+{
+  return recv(reactor_core_desc_fd(desc), data, size, MSG_DONTWAIT);
+}
+
+void reactor_desc_read_notify(reactor_desc *desc, int flag)
+{
+  if (flag)
+    reactor_core_desc_set(desc, POLLIN);
+  else
+    reactor_core_desc_clear(desc, POLLIN);
+}
+
+ssize_t reactor_desc_write(reactor_desc *desc, void *data, size_t size)
+{
+  return send(reactor_core_desc_fd(desc), data, size, MSG_DONTWAIT);
+}
+
+void reactor_desc_write_notify(reactor_desc *desc, int flag)
+{
+  if (flag)
+    reactor_core_desc_set(desc, POLLOUT);
+  else
+    reactor_core_desc_clear(desc, POLLOUT);
 }
