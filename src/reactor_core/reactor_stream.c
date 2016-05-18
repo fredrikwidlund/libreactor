@@ -96,34 +96,6 @@ void reactor_stream_read(reactor_stream *stream)
     reactor_user_dispatch(&stream->user, REACTOR_STREAM_READ, (reactor_stream_data[]){{.base = buffer, .size = n}});
 }
 
-void reactor_stream_write_direct(reactor_stream *stream, void *base, size_t size)
-{
-  ssize_t n;
-
-  if (buffer_size(&stream->output))
-    reactor_stream_write(stream, base, size);
-  else while (size)
-    {
-      n = send(reactor_desc_fd(&stream->desc), base, size, MSG_DONTWAIT);
-      if (n == -1)
-        {
-          if (errno != EAGAIN)
-            {
-              reactor_stream_error(stream);
-              return;
-            }
-
-          stream->flags |= REACTOR_STREAM_FLAGS_BLOCKED;
-          reactor_desc_events(&stream->desc, REACTOR_DESC_READ | REACTOR_DESC_WRITE);
-          reactor_stream_write(stream, base, size);
-          return;
-        }
-
-      base = (char *) base +  n;
-      size -= n;
-    }
-}
-
 void reactor_stream_write(reactor_stream *stream, void *base, size_t size)
 {
   int e;
@@ -133,26 +105,57 @@ void reactor_stream_write(reactor_stream *stream, void *base, size_t size)
     reactor_stream_error(stream);
 }
 
+void reactor_stream_write_direct(reactor_stream *stream, void *base, size_t size)
+{
+  size_t n;
+
+  if (stream->state == REACTOR_STREAM_CLOSED)
+    return;
+
+  if (buffer_size(&stream->output))
+    {
+      reactor_stream_write(stream, base, size);
+      return;
+    }
+
+  n = reactor_stream_desc_write(stream, base, size);
+  if (n < size)
+    {
+      if (errno != EAGAIN)
+        reactor_stream_error(stream);
+      else
+        reactor_stream_write(stream, (char *) base + n, size - n);
+    }
+}
+
 void reactor_stream_flush(reactor_stream *stream)
 {
+  size_t n;
+
+  if (stream->state == REACTOR_STREAM_CLOSED)
+    return;
+
+  n = reactor_stream_desc_write(stream, buffer_data(&stream->output), buffer_size(&stream->output));
+  buffer_erase(&stream->output, 0, n);
+  if (buffer_size(&stream->output) && errno != EAGAIN)
+    reactor_stream_error(stream);
+}
+
+size_t reactor_stream_desc_write(reactor_stream *stream, void *data, size_t size)
+{
+  size_t i;
   ssize_t n;
 
-  while (stream->state > REACTOR_STREAM_CLOSED && buffer_size(&stream->output))
+  for (i = 0; i < size; i += n)
     {
-      n = send(reactor_desc_fd(&stream->desc), buffer_data(&stream->output), buffer_size(&stream->output), MSG_DONTWAIT);
+      n = reactor_desc_write(&stream->desc, (char *) data + i, size - i);
       if (n == -1)
         {
-          if (errno != EAGAIN)
-            {
-              reactor_stream_error(stream);
-              return;
-            }
-
           stream->flags |= REACTOR_STREAM_FLAGS_BLOCKED;
-          reactor_desc_events(&stream->desc, REACTOR_DESC_READ | REACTOR_DESC_WRITE);
-          return;
+          reactor_desc_write_notify(&stream->desc, 1);
+          break;
         }
-
-      buffer_erase(&stream->output, 0, n);
     }
+
+  return i;
 }

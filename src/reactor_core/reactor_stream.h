@@ -45,14 +45,15 @@ struct reactor_stream_data
   size_t        size;
 };
 
-void reactor_stream_init(reactor_stream *, reactor_user_callback *, void *);
-int  reactor_stream_open(reactor_stream *, int);
-void reactor_stream_close(reactor_stream *);
-void reactor_stream_event(void *, int, void *);
-void reactor_stream_error(reactor_stream *);
-void reactor_stream_read(reactor_stream *);
-void reactor_stream_write(reactor_stream *, void *, size_t);
-void reactor_stream_write_direct(reactor_stream *, void *, size_t);
-void reactor_stream_flush(reactor_stream *);
+void   reactor_stream_init(reactor_stream *, reactor_user_callback *, void *);
+int    reactor_stream_open(reactor_stream *, int);
+void   reactor_stream_close(reactor_stream *);
+void   reactor_stream_event(void *, int, void *);
+void   reactor_stream_error(reactor_stream *);
+void   reactor_stream_read(reactor_stream *);
+void   reactor_stream_write(reactor_stream *, void *, size_t);
+void   reactor_stream_write_direct(reactor_stream *, void *, size_t);
+void   reactor_stream_flush(reactor_stream *);
+size_t reactor_stream_desc_write(reactor_stream *, void *, size_t);
 
 #endif /* REACTOR_STREAM_H_INCLUDED */
