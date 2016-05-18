@@ -17,7 +17,7 @@ static char reply[] =
   "HTTP/1.0 200 OK\r\n"
   "Content-Length: 4\r\n"
   "Content-Type: plain/html\r\n"
-  "Connection: keep-alive\r\n"
+  "Connection: close\r\n"
   "\r\n"
   "test";
 
@@ -32,6 +32,7 @@ void client_event(void *state, int type, void *data)
       break;
     case REACTOR_STREAM_READ:
       reactor_stream_write_direct(stream, reply, sizeof reply - 1);
+      reactor_stream_shutdown(stream);
       break;
     case REACTOR_STREAM_CLOSE:
       free(stream);

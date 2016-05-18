@@ -40,12 +40,26 @@ void reactor_stream_close(reactor_stream *stream)
   if (stream->state == REACTOR_STREAM_CLOSED)
     return;
 
-  shutdown(reactor_desc_fd(&stream->desc), SHUT_RDWR);
   reactor_desc_close(&stream->desc);
   buffer_clear(&stream->input);
   buffer_clear(&stream->output);
   stream->state = REACTOR_STREAM_CLOSED;
   reactor_user_dispatch(&stream->user, REACTOR_STREAM_CLOSE, NULL);
+}
+
+void reactor_stream_shutdown(reactor_stream *stream)
+{
+  if (stream->state != REACTOR_STREAM_OPEN)
+    return;
+
+  if (buffer_size(&stream->output))
+    {
+      stream->state = REACTOR_STREAM_LINGER;
+      //(void) shutdown(reactor_desc_fd(&stream->desc), SHUT_RD);
+      reactor_desc_read_notify(&stream->desc, 0);
+    }
+  else
+    reactor_stream_close(stream);
 }
 
 void reactor_stream_event(void *state, int type, void *data)
@@ -59,14 +73,19 @@ void reactor_stream_event(void *state, int type, void *data)
       reactor_stream_error(stream);
       break;
     case REACTOR_DESC_READ:
+      if (stream->state != REACTOR_STREAM_OPEN)
+        break;
       reactor_stream_read(stream);
-      if (reactor_core_current() >= 0 && (stream->flags & REACTOR_STREAM_FLAGS_BLOCKED) == 0)
+      if (reactor_core_current() >= 0 &&
+          (stream->flags & REACTOR_STREAM_FLAGS_BLOCKED) == 0)
         reactor_stream_flush(stream);
       break;
     case REACTOR_DESC_WRITE:
       stream->flags &= ~REACTOR_STREAM_FLAGS_BLOCKED;
       reactor_stream_flush(stream);
-      if (reactor_core_current() >= 0 && (stream->flags & REACTOR_STREAM_FLAGS_BLOCKED) == 0)
+      if (reactor_core_current() >= 0 &&
+          stream->state == REACTOR_STREAM_OPEN &&
+          (stream->flags & REACTOR_STREAM_FLAGS_BLOCKED) == 0)
         reactor_user_dispatch(&stream->user, REACTOR_STREAM_WRITE_AVAILABLE, NULL);
       break;
     case REACTOR_DESC_CLOSE:
@@ -137,8 +156,13 @@ void reactor_stream_flush(reactor_stream *stream)
 
   n = reactor_stream_desc_write(stream, buffer_data(&stream->output), buffer_size(&stream->output));
   buffer_erase(&stream->output, 0, n);
-  if (buffer_size(&stream->output) && errno != EAGAIN)
-    reactor_stream_error(stream);
+  if (buffer_size(&stream->output))
+    {
+      if (errno != EAGAIN)
+        reactor_stream_error(stream);
+    }
+  else if (stream->state == REACTOR_STREAM_LINGER)
+    reactor_stream_close(stream);
 }
 
 size_t reactor_stream_desc_write(reactor_stream *stream, void *data, size_t size)
