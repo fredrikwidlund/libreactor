@@ -3,16 +3,18 @@ AM_CFLAGS = -std=gnu11 -g -O3 -flto -fuse-linker-plugin -I$(srcdir)/src
 AM_LDFLAGS = -static
 
 SOURCE_FILES = \
-src/reactor_core/reactor_core.c \
+src/reactor_core/reactor_user.c \
 src/reactor_core/reactor_desc.c \
+src/reactor_core/reactor_core.c \
 src/reactor_core/reactor_stream.c \
-src/reactor_core/reactor_user.c
+src/reactor_core/reactor_tcp.c
 
 HEADER_FILES = \
-src/reactor_core/reactor_core.h \
+src/reactor_core/reactor_user.h \
 src/reactor_core/reactor_desc.h \
+src/reactor_core/reactor_core.h \
 src/reactor_core/reactor_stream.h \
-src/reactor_core/reactor_user.h
+src/reactor_core/reactor_tcp.h
 
 MAIN_HEADER_FILES = \
 src/reactor_core.h
@@ -32,9 +34,11 @@ maintainer-clean-local:; rm -rf autotools m4 libreactor_core-?.?.?
 
 ## examples ###
 
-bin_PROGRAMS = example/tcpserver1 example/tcpserver2
+bin_PROGRAMS = example/tcpserver1 example/tcpserver2 example/tcpserver3 example/tcpclient1
 example_tcpserver1_LDADD = -L. -lreactor_core -ldynamic
 example_tcpserver2_LDADD = -L. -lreactor_core -ldynamic
+example_tcpserver3_LDADD = -L. -lreactor_core -ldynamic
+example_tcpclient1_LDADD = -L. -lreactor_core -ldynamic
 
 ### unit tests ###
 
