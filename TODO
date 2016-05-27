@@ -1,0 +1,5 @@
+* decide on close pattern - current pointers, CLOSING state + close final, emit data always final, out of event loop close, ...
+* read consumes
+* response write (compound literals?)
+* chunked data
+* streaming data

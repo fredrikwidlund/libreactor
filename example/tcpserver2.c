@@ -11,19 +11,25 @@
 
 #include <dynamic.h>
 
+#include "picohttpparser.h"
 #include "reactor_core.h"
 
 static char reply[] =
   "HTTP/1.0 200 OK\r\n"
   "Content-Length: 4\r\n"
   "Content-Type: plain/html\r\n"
-  "Connection: close\r\n"
+  "Connection: keep-alive\r\n"
   "\r\n"
   "test";
 
 void client_event(void *state, int type, void *data)
 {
   reactor_stream *stream = state;
+  reactor_stream_data *read;
+  struct phr_header fields[32];
+  size_t fields_count, method_size, path_size;
+  int n, minor_version;
+  char *method, *path;
 
   (void) data;
   switch (type)
@@ -31,8 +37,18 @@ void client_event(void *state, int type, void *data)
     case REACTOR_STREAM_ERROR:
       break;
     case REACTOR_STREAM_READ:
-      reactor_stream_write_direct(stream, reply, sizeof reply - 1);
-      reactor_stream_shutdown(stream);
+      read = data;
+      fields_count = 32;
+      n = phr_parse_request(read->base, read->size,
+                            (const char **) &method, &method_size,
+                            (const char **) &path, &path_size,
+                            &minor_version,
+                            fields, &fields_count, 0);
+      if (!n)
+        printf("n %d %.*s %.*s\n", n, (int) method_size, method, (int) path_size, path);
+
+      reactor_stream_write(stream, reply, sizeof reply - 1);
+      //reactor_stream_shutdown(stream);
       break;
     case REACTOR_STREAM_CLOSE:
       free(stream);

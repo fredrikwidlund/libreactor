@@ -104,6 +104,7 @@ void reactor_stream_error(reactor_stream *stream)
 void reactor_stream_read(reactor_stream *stream)
 {
   char buffer[REACTOR_STREAM_BLOCK_SIZE];
+  reactor_stream_data data;
   ssize_t n;
 
   n = reactor_desc_read(&stream->desc, buffer, sizeof buffer);
@@ -113,8 +114,11 @@ void reactor_stream_read(reactor_stream *stream)
     reactor_stream_close(stream);
   else if (n > 0)
     {
-      reactor_user_dispatch(&stream->user, REACTOR_STREAM_READ, (reactor_stream_data[]){{.base = buffer, .size = n}});
-      /* XXX handle input buffer in data is not read */
+      data = (reactor_stream_data) {.base = buffer, .size = n};
+      reactor_user_dispatch(&stream->user, REACTOR_STREAM_READ, &data);
+      /* what happens if the stream is deleted by the user here... */
+      if (data.size)
+        buffer_insert(&stream->input, buffer_size(&stream->input), data.base, data.size);
     }
 }
 
@@ -122,11 +126,9 @@ void reactor_stream_write(reactor_stream *stream, void *base, size_t size)
 {
   int e;
 
-  printf("size %ld\n", buffer_size(&stream->output));
   e = buffer_insert(&stream->output, buffer_size(&stream->output), base, size);
   if (e == -1)
     reactor_stream_error(stream);
-  printf("written %ld %ld\n", size, buffer_size(&stream->output));
 }
 
 void reactor_stream_write_direct(reactor_stream *stream, void *base, size_t size)

@@ -118,12 +118,11 @@ void reactor_http_session_read(reactor_http_session *session, reactor_stream_dat
 
   if (session->state == REACTOR_HTTP_MESSAGE_COMPLETE)
     {
+      session->state = REACTOR_HTTP_MESSAGE_HEADER;
       reactor_user_dispatch(&session->http->user, REACTOR_HTTP_REQUEST, session);
       /* reactor_stream_data_consume(); */
-      session->state = REACTOR_HTTP_MESSAGE_HEADER;
     }
-
-  if (session->state == REACTOR_HTTP_MESSAGE_ERROR)
+  else if (session->state == REACTOR_HTTP_MESSAGE_ERROR)
     reactor_http_session_error(session);
 }
 
