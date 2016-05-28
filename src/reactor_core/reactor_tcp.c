@@ -53,6 +53,15 @@ void reactor_tcp_error(reactor_tcp *tcp)
   reactor_user_dispatch(&tcp->user, REACTOR_TCP_ERROR, NULL);
 }
 
+void reactor_tcp_close(reactor_tcp *tcp)
+{
+  if (tcp->state != REACTOR_TCP_OPEN)
+      return;
+  reactor_desc_close(&tcp->desc);
+  tcp->state = REACTOR_TCP_CLOSED;
+  reactor_user_dispatch(&tcp->user, REACTOR_TCP_CLOSE, NULL);
+}
+
 void reactor_tcp_connect(reactor_tcp *tcp, char *node, char *service)
 {
   struct addrinfo *ai;
@@ -90,6 +99,7 @@ void reactor_tcp_connect(reactor_tcp *tcp, char *node, char *service)
       return;
     }
 
+  tcp->state = REACTOR_TCP_OPEN;
   reactor_user_dispatch(&tcp->user, REACTOR_TCP_CONNECT, &s);
 }
 
@@ -129,6 +139,8 @@ void reactor_tcp_listen(reactor_tcp *tcp, char *node, char *service)
       reactor_tcp_error(tcp);
       return;
     }
+
+  tcp->state = REACTOR_TCP_OPEN;
 }
 
 void reactor_tcp_event(void *state, int type, void *data)
@@ -140,10 +152,12 @@ void reactor_tcp_event(void *state, int type, void *data)
     {
     case REACTOR_DESC_READ:
       s = accept(*(int *) data, NULL, NULL);
-      if (s >= 0)
-        reactor_user_dispatch(&tcp->user, REACTOR_TCP_ACCEPT, &s);
-      else
-        reactor_tcp_error(tcp);
+      if (s == -1)
+        {
+          reactor_tcp_error(tcp);
+          return;
+        }
+      reactor_user_dispatch(&tcp->user, REACTOR_TCP_ACCEPT, &s);
       break;
     }
 }

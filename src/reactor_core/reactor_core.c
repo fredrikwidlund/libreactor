@@ -50,6 +50,9 @@ int reactor_core_run(void)
 
 void reactor_core_close(void)
 {
+  vector_clear(&core.polls);
+  vector_clear(&core.descs);
+  core.state = REACTOR_CORE_CLOSED;
 }
 
 int reactor_core_current(void)

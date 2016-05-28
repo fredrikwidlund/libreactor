@@ -112,16 +112,21 @@ void reactor_stream_read(reactor_stream *stream)
   else if (n == 0)
     reactor_stream_close(stream);
   else if (n > 0)
-    reactor_user_dispatch(&stream->user, REACTOR_STREAM_READ, (reactor_stream_data[]){{.base = buffer, .size = n}});
+    {
+      reactor_user_dispatch(&stream->user, REACTOR_STREAM_READ, (reactor_stream_data[]){{.base = buffer, .size = n}});
+      /* XXX handle input buffer in data is not read */
+    }
 }
 
 void reactor_stream_write(reactor_stream *stream, void *base, size_t size)
 {
   int e;
 
+  printf("size %ld\n", buffer_size(&stream->output));
   e = buffer_insert(&stream->output, buffer_size(&stream->output), base, size);
   if (e == -1)
     reactor_stream_error(stream);
+  printf("written %ld %ld\n", size, buffer_size(&stream->output));
 }
 
 void reactor_stream_write_direct(reactor_stream *stream, void *base, size_t size)

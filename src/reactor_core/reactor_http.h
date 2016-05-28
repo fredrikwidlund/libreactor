@@ -1,0 +1,66 @@
+#ifndef REACTOR_HTTP_H_INCLUDED
+#define REACTOR_HTTP_H_INCLUDED
+
+#define REACTOR_HTTP_MAX_FIELDS 128
+
+enum reactor_http_state
+{
+  REACTOR_HTTP_CLOSED,
+  REACTOR_HTTP_OPEN
+};
+
+enum reactor_http_events
+{
+  REACTOR_HTTP_ERROR,
+  REACTOR_HTTP_REQUEST,
+  REACTOR_HTTP_CLOSE
+};
+
+typedef struct reactor_http reactor_http;
+struct reactor_http
+{
+  int                   state;
+  reactor_user          user;
+  reactor_tcp           tcp;
+};
+
+typedef struct reactor_http_session reactor_http_session;
+struct reactor_http_session
+{
+  reactor_stream        stream;
+  reactor_http         *http;
+};
+
+typedef struct reactor_http_field reactor_http_field;
+struct reactor_http_field
+{
+  char                 *name;
+  char                 *value;
+};
+
+typedef struct reactor_http_request reactor_http_request;
+struct reactor_http_request
+{
+  reactor_http_session *session;
+  char                 *base;
+  char                 *method;
+  char                 *path;
+  int                   minor_version;
+  char                 *host;
+  char                 *service;
+  char                 *content;
+  size_t                content_size;
+  vector                fields;
+};
+
+void reactor_http_init(reactor_http *, reactor_user_callback *, void *);
+void reactor_http_server(reactor_http *, char *, char *);
+void reactor_http_error(reactor_http *);
+void reactor_http_close(reactor_http *);
+void reactor_http_tcp_event(void *, int, void *);
+void reactor_http_session_event(void *, int, void *);
+void reactor_http_session_close(reactor_http_session *);
+void reactor_http_session_error(reactor_http_session *);
+void reactor_http_session_read(reactor_http_session *, reactor_stream_data *);
+
+#endif /* REACTOR_HTTP_H_INCLUDED */

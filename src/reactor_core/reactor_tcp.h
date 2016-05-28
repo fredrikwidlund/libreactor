@@ -11,7 +11,8 @@ enum reactor_tcp_events
 {
   REACTOR_TCP_ERROR,
   REACTOR_TCP_ACCEPT,
-  REACTOR_TCP_CONNECT
+  REACTOR_TCP_CONNECT,
+  REACTOR_TCP_CLOSE
 };
 
 typedef struct reactor_tcp reactor_tcp;
@@ -24,6 +25,7 @@ struct reactor_tcp
 
 void reactor_tcp_init(reactor_tcp *, reactor_user_callback *, void *);
 void reactor_tcp_error(reactor_tcp *);
+void reactor_tcp_close(reactor_tcp *);
 void reactor_tcp_connect(reactor_tcp *, char *, char *);
 void reactor_tcp_listen(reactor_tcp *, char *, char *);
 void reactor_tcp_event(void *, int, void *);
