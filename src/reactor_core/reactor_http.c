@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <string.h>
 #include <errno.h>
 #include <unistd.h>
 #include <netdb.h>
@@ -71,7 +72,7 @@ void reactor_http_tcp_event(void *state, int type, void *data)
           reactor_http_error(http);
           return;
         };
-      session->http = http;
+      reactor_http_session_init(session, http);
       reactor_stream_init(&session->stream, reactor_http_session_event, session);
       reactor_stream_open(&session->stream, *(int *) data);
       break;
@@ -79,6 +80,11 @@ void reactor_http_tcp_event(void *state, int type, void *data)
       reactor_http_close(http);
       break;
     }
+}
+
+void reactor_http_session_init(reactor_http_session *session, reactor_http *http)
+{
+  *session = (reactor_http_session) {.state = REACTOR_HTTP_MESSAGE_HEADER, .http = http};
 }
 
 void reactor_http_session_event(void *state, int type, void *data)
@@ -94,8 +100,6 @@ void reactor_http_session_event(void *state, int type, void *data)
       reactor_http_session_close(session);
       break;
     }
-
-  (void) data;
 }
 
 void reactor_http_session_error(reactor_http_session *session)
@@ -106,31 +110,62 @@ void reactor_http_session_error(reactor_http_session *session)
 
 void reactor_http_session_read(reactor_http_session *session, reactor_stream_data *data)
 {
-  struct phr_header fields[REACTOR_HTTP_MAX_FIELDS];
-  reactor_http_request request;
-  size_t fields_count, method_size, path_size;
-  int n;
+  if (session->state == REACTOR_HTTP_MESSAGE_HEADER)
+    reactor_http_session_read_header(session, data);
 
-  fields_count = REACTOR_HTTP_MAX_FIELDS;
-  n = phr_parse_request(data->base, data->size,
-                        (const char **) &request.method, &method_size,
-                        (const char **) &request.path, &path_size,
-                        &request.minor_version,
-                        fields, &fields_count, 0);
-  if (n == -1)
+  if (session->state == REACTOR_HTTP_MESSAGE_BODY)
+    reactor_http_session_read_body(session, data);
+
+  if (session->state == REACTOR_HTTP_MESSAGE_COMPLETE)
     {
-      reactor_http_session_error(session);
-      return;
+      reactor_user_dispatch(&session->http->user, REACTOR_HTTP_REQUEST, session);
+      /* reactor_stream_data_consume(); */
+      session->state = REACTOR_HTTP_MESSAGE_HEADER;
     }
 
-  if (n == -2)
-    return;
+  if (session->state == REACTOR_HTTP_MESSAGE_ERROR)
+    reactor_http_session_error(session);
+}
 
-  request.session = session;
-  request.method[method_size] = 0;
-  request.path[path_size] = 0;
-  reactor_user_dispatch(&session->http->user, REACTOR_HTTP_REQUEST, &request);
-  /* reactor_stream_data_consume(); */
+void reactor_http_session_read_header(reactor_http_session *session, reactor_stream_data *data)
+{
+  struct phr_header fields[REACTOR_HTTP_MAX_FIELDS];
+  reactor_http_header *header = &session->message.header;
+  size_t method_size, path_size, i;
+  int n;
+
+  header->fields_size = REACTOR_HTTP_MAX_FIELDS;
+  n = phr_parse_request(data->base, data->size,
+                        (const char **) &header->method, &method_size,
+                        (const char **) &header->path, &path_size,
+                        &header->version,
+                        fields, &header->fields_size, 0);
+  if (n == -1)
+    session->state = REACTOR_HTTP_MESSAGE_ERROR;
+  else if (n > 0)
+    {
+      session->message.header_size = n;
+      session->message.base = data->base;
+      session->message.body_size = 0;
+      header->method[method_size] = 0;
+      header->path[path_size] = 0;
+      for (i = 0; i < header->fields_size; i ++)
+        {
+          header->fields[i].name = (char *) fields[i].name;
+          header->fields[i].name[fields[i].name_len] = 0;
+          header->fields[i].value = (char *) fields[i].value;
+          header->fields[i].value[fields[i].value_len] = 0;
+          if (strcasecmp(header->fields[i].name, "Content-Length") == 0)
+            session->message.body_size = strtoul(header->fields[i].value, NULL, 0);
+        }
+      session->state = REACTOR_HTTP_MESSAGE_BODY;
+    }
+}
+
+void reactor_http_session_read_body(reactor_http_session *session, reactor_stream_data *data)
+{
+  if (data->size >= session->message.header_size + session->message.body_size)
+    session->state = REACTOR_HTTP_MESSAGE_COMPLETE;
 }
 
 void reactor_http_session_close(reactor_http_session *session)

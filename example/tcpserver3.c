@@ -31,7 +31,7 @@ void client_event(void *state, int type, void *data)
     case REACTOR_STREAM_ERROR:
       break;
     case REACTOR_STREAM_READ:
-      reactor_stream_write(stream, reply, sizeof reply - 1);
+      reactor_stream_write_direct(stream, reply, sizeof reply - 1);
       break;
     case REACTOR_STREAM_CLOSE:
       free(stream);

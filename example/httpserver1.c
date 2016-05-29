@@ -24,16 +24,14 @@ static char reply[] =
 void http_event(void *state, int type, void *data)
 {
   reactor_http *http = state;
-  reactor_http_request *request;
+  reactor_http_session *session;
 
   (void) http;
   switch (type)
     {
     case REACTOR_HTTP_REQUEST:
-      request = data;
-      (void) request;
-      //(void) printf("request %s %s\n", request->method, request->path);
-      reactor_stream_write_direct(&request->session->stream, reply, sizeof reply - 1);
+      session = data;
+      reactor_stream_write_direct(&session->stream, reply, sizeof reply - 1);
       break;
     case REACTOR_HTTP_ERROR:
       err(1, "http_event");
