@@ -64,7 +64,7 @@ int main()
               sizeof(struct sockaddr_in)) == 0);
   assert(listen(s, -1) == 0);
   reactor_desc_init(&desc, server_event, &desc);
-  assert(reactor_desc_open(&desc, s) == 0);
+  reactor_desc_open(&desc, s);
   assert(reactor_core_run() == 0);
 
   reactor_core_close();

@@ -6,13 +6,17 @@
 enum reactor_http_state
 {
   REACTOR_HTTP_CLOSED,
-  REACTOR_HTTP_OPEN
+  REACTOR_HTTP_OPEN,
+  REACTOR_HTTP_CLOSING,
+  REACTOR_HTTP_CLOSE_WAIT,
+  REACTOR_HTTP_INVALID
 };
 
 enum reactor_http_events
 {
   REACTOR_HTTP_ERROR,
   REACTOR_HTTP_REQUEST,
+  REACTOR_HTTP_SHUTDOWN,
   REACTOR_HTTP_CLOSE
 };
 
@@ -22,7 +26,9 @@ struct reactor_http
   int                   state;
   reactor_user          user;
   reactor_tcp           tcp;
+  size_t                sessions;
 };
+
 typedef struct reactor_http_field reactor_http_field;
 struct reactor_http_field
 {
@@ -56,7 +62,6 @@ enum reactor_http_session_state
   REACTOR_HTTP_MESSAGE_HEADER,
   REACTOR_HTTP_MESSAGE_BODY,
   REACTOR_HTTP_MESSAGE_COMPLETE,
-  REACTOR_HTTP_MESSAGE_ERROR
 };
 
 enum reactor_http_message_flags
@@ -108,11 +113,11 @@ void reactor_http_error(reactor_http *);
 void reactor_http_close(reactor_http *);
 void reactor_http_tcp_event(void *, int, void *);
 void reactor_http_session_init(reactor_http_session *, reactor_http *);
-void reactor_http_session_event(void *, int, void *);
 void reactor_http_session_error(reactor_http_session *);
+void reactor_http_session_close(reactor_http_session *);
+void reactor_http_session_event(void *, int, void *);
 void reactor_http_session_read(reactor_http_session *, reactor_stream_data *);
 void reactor_http_session_read_header(reactor_http_session *, reactor_stream_data *);
 void reactor_http_session_read_body(reactor_http_session *, reactor_stream_data *);
-void reactor_http_session_close(reactor_http_session *);
 
 #endif /* REACTOR_HTTP_H_INCLUDED */

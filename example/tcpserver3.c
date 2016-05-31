@@ -42,7 +42,6 @@ void client_event(void *state, int type, void *data)
 void event(void *state, int type, void *data)
 {
   reactor_stream *stream;
-  int e;
 
   (void) state;
   switch (type)
@@ -50,9 +49,7 @@ void event(void *state, int type, void *data)
     case REACTOR_TCP_ACCEPT:
       stream = malloc(sizeof *stream);
       reactor_stream_init(stream, client_event, stream);
-      e = reactor_stream_open(stream, *(int *) data);
-      if (e == -1)
-        err(1, "reactor_stream_open");
+      reactor_stream_open(stream, *(int *) data);
       break;
     case REACTOR_TCP_ERROR:
       err(1, "event");

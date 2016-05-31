@@ -34,7 +34,7 @@ void http_event(void *state, int type, void *data)
       reactor_stream_write_direct(&session->stream, reply, sizeof reply - 1);
       break;
     case REACTOR_HTTP_ERROR:
-      err(1, "http_event");
+      reactor_http_close(http);
       break;
     }
 }

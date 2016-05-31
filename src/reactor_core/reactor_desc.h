@@ -4,7 +4,8 @@
 enum reactor_desc_state
 {
   REACTOR_DESC_CLOSED = 0,
-  REACTOR_DESC_OPEN
+  REACTOR_DESC_OPEN,
+  REACTOR_DESC_INVALID
 };
 
 enum reactor_desc_events
@@ -12,6 +13,7 @@ enum reactor_desc_events
   REACTOR_DESC_ERROR,
   REACTOR_DESC_READ,
   REACTOR_DESC_WRITE,
+  REACTOR_DESC_SHUTDOWN,
   REACTOR_DESC_CLOSE
 };
 
@@ -24,8 +26,9 @@ struct reactor_desc
 };
 
 void    reactor_desc_init(reactor_desc *, reactor_user_callback *, void *);
-int     reactor_desc_open(reactor_desc *, int);
+void    reactor_desc_open(reactor_desc *, int);
 void    reactor_desc_close(reactor_desc *);
+void    reactor_desc_error(reactor_desc *);
 void    reactor_desc_events(reactor_desc *, int);
 int     reactor_desc_fd(reactor_desc *);
 void    reactor_desc_event(void *, int, void *);

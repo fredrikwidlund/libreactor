@@ -11,7 +11,7 @@
 
 #include <dynamic.h>
 
-#include "picohttpparser.h"
+#include "picohttpparser/picohttpparser.h"
 #include "reactor_core.h"
 
 static char reply[] =
@@ -50,6 +50,9 @@ void client_event(void *state, int type, void *data)
       reactor_stream_write(stream, reply, sizeof reply - 1);
       //reactor_stream_shutdown(stream);
       break;
+    case REACTOR_STREAM_SHUTDOWN:
+      reactor_stream_close(stream);
+      break;
     case REACTOR_STREAM_CLOSE:
       free(stream);
       break;
@@ -59,7 +62,7 @@ void client_event(void *state, int type, void *data)
 void server_event(void *state, int type, void *data)
 {
   reactor_stream *stream;
-  int c, *fd, e;
+  int c, *fd;
 
   (void) state;
   if (type & REACTOR_DESC_READ)
@@ -70,9 +73,7 @@ void server_event(void *state, int type, void *data)
         {
           stream = malloc(sizeof *stream);
           reactor_stream_init(stream, client_event, stream);
-          e = reactor_stream_open(stream, c);
-          if (e == -1)
-            err(1, "reactor_stream_open");
+          reactor_stream_open(stream, c);
         }
     }
 }
@@ -94,7 +95,7 @@ int main()
               sizeof(struct sockaddr_in)) == 0);
   assert(listen(s, -1) == 0);
   reactor_desc_init(&desc, server_event, &desc);
-  assert(reactor_desc_open(&desc, s) == 0);
+  reactor_desc_open(&desc, s);
   assert(reactor_core_run() == 0);
 
   reactor_core_close();

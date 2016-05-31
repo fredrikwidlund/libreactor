@@ -73,7 +73,10 @@ int reactor_core_desc_add(reactor_desc *desc, int fd, int events)
 
   e = vector_push_back(&core.descs, &desc);
   if (e == -1)
-    return -1;
+    {
+      vector_pop_back(&core.polls);
+      return -1;
+    }
 
   desc->index = vector_size(&core.polls) - 1;
   return 0;

@@ -1,0 +1,15 @@
+Close rules
+-----------
+
+* Event input should use "current pointers" in sensitive regions
+* Close should not return errors
+* Errors should not close
+* Shutdown events should be propagated up and not acted on except by object owner
+* Close should _only_ be done by owner
+* Object should wait for child close events, before execting the private close_final
+
+Todo
+* read consumes
+* response write (compound literals?)
+* chunked data
+* streaming data

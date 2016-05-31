@@ -34,10 +34,7 @@ static int reactor_tcp_bind(reactor_tcp *tcp, int s, struct sockaddr *sa, sockle
   if (e == -1)
     return -1;
 
-  e = reactor_desc_open(&tcp->desc, s);
-  if (e == -1)
-    return -1;
-
+  reactor_desc_open(&tcp->desc, s);
   return 0;
 }
 
@@ -50,14 +47,20 @@ void reactor_tcp_init(reactor_tcp *tcp, reactor_user_callback *callback, void *s
 
 void reactor_tcp_error(reactor_tcp *tcp)
 {
+  tcp->state = REACTOR_TCP_INVALID;
   reactor_user_dispatch(&tcp->user, REACTOR_TCP_ERROR, NULL);
 }
 
 void reactor_tcp_close(reactor_tcp *tcp)
 {
-  if (tcp->state != REACTOR_TCP_OPEN)
+  if (tcp->state != REACTOR_TCP_OPEN && tcp->state != REACTOR_TCP_INVALID)
       return;
+
   reactor_desc_close(&tcp->desc);
+}
+
+void reactor_tcp_close_final(reactor_tcp *tcp)
+{
   tcp->state = REACTOR_TCP_CLOSED;
   reactor_user_dispatch(&tcp->user, REACTOR_TCP_CLOSE, NULL);
 }
@@ -72,6 +75,7 @@ void reactor_tcp_connect(reactor_tcp *tcp, char *node, char *service)
       reactor_tcp_error(tcp);
       return;
     }
+  tcp->state = REACTOR_TCP_OPEN;
 
   e = getaddrinfo(node, service,
                   (struct addrinfo[]) {{.ai_family = AF_INET, .ai_socktype = SOCK_STREAM}},
@@ -99,7 +103,6 @@ void reactor_tcp_connect(reactor_tcp *tcp, char *node, char *service)
       return;
     }
 
-  tcp->state = REACTOR_TCP_OPEN;
   reactor_user_dispatch(&tcp->user, REACTOR_TCP_CONNECT, &s);
 }
 
@@ -113,6 +116,7 @@ void reactor_tcp_listen(reactor_tcp *tcp, char *node, char *service)
       reactor_tcp_error(tcp);
       return;
     }
+  tcp->state = REACTOR_TCP_OPEN;
 
   e = getaddrinfo(node, service,
                   (struct addrinfo[]) {{.ai_family = AF_INET, .ai_socktype = SOCK_STREAM, .ai_flags = AI_PASSIVE}},
@@ -139,8 +143,6 @@ void reactor_tcp_listen(reactor_tcp *tcp, char *node, char *service)
       reactor_tcp_error(tcp);
       return;
     }
-
-  tcp->state = REACTOR_TCP_OPEN;
 }
 
 void reactor_tcp_event(void *state, int type, void *data)
@@ -158,6 +160,12 @@ void reactor_tcp_event(void *state, int type, void *data)
           return;
         }
       reactor_user_dispatch(&tcp->user, REACTOR_TCP_ACCEPT, &s);
+      break;
+    case REACTOR_DESC_SHUTDOWN:
+      reactor_user_dispatch(&tcp->user, REACTOR_TCP_SHUTDOWN, NULL);
+      break;
+    case REACTOR_DESC_CLOSE:
+      reactor_tcp_close_final(tcp);
       break;
     }
 }
