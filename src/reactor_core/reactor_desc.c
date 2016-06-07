@@ -10,12 +10,21 @@
 #include "reactor_desc.h"
 #include "reactor_core.h"
 
-static void reactor_desc_hold(reactor_desc *desc)
+static inline void reactor_desc_close_final(reactor_desc *desc)
+{
+  if (desc->state == REACTOR_DESC_CLOSE_WAIT && !desc->ref)
+    {
+      reactor_user_dispatch(&desc->user, REACTOR_DESC_CLOSE, NULL);
+      desc->state = REACTOR_DESC_CLOSED;
+    }
+}
+
+static inline void reactor_desc_hold(reactor_desc *desc)
 {
   desc->ref ++;
 }
 
-static void reactor_desc_release(reactor_desc *desc)
+static inline void reactor_desc_release(reactor_desc *desc)
 {
   desc->ref --;
   reactor_desc_close_final(desc);
@@ -64,15 +73,6 @@ void reactor_desc_close(reactor_desc *desc)
     }
 }
 
-void reactor_desc_close_final(reactor_desc *desc)
-{
-  if (desc->state == REACTOR_DESC_CLOSE_WAIT && !desc->ref)
-    {
-      reactor_user_dispatch(&desc->user, REACTOR_DESC_CLOSE, NULL);
-      desc->state = REACTOR_DESC_CLOSED;
-    }
-}
-
 void reactor_desc_error(reactor_desc *desc)
 {
   desc->state = REACTOR_DESC_INVALID;
@@ -93,19 +93,19 @@ void reactor_desc_event(void *state, int type, void *data)
 {
   reactor_desc *desc = state;
 
+  reactor_desc_hold(desc);
   if (type & POLLHUP)
     reactor_user_dispatch(&desc->user, REACTOR_DESC_SHUTDOWN, data);
   else if (type & (POLLERR | POLLNVAL))
     reactor_user_dispatch(&desc->user, REACTOR_DESC_ERROR, data);
   else
     {
-      reactor_desc_hold(desc);
       if (type & POLLOUT)
         reactor_user_dispatch(&desc->user, REACTOR_DESC_WRITE, data);
       if (desc->state == REACTOR_DESC_OPEN && type & POLLIN)
         reactor_user_dispatch(&desc->user, REACTOR_DESC_READ, data);
-      reactor_desc_release(desc);
     }
+  reactor_desc_release(desc);
 }
 
 ssize_t reactor_desc_read(reactor_desc *desc, void *data, size_t size)

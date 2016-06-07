@@ -30,7 +30,6 @@ struct reactor_desc
 void    reactor_desc_init(reactor_desc *, reactor_user_callback *, void *);
 void    reactor_desc_open(reactor_desc *, int);
 void    reactor_desc_close(reactor_desc *);
-void    reactor_desc_close_final(reactor_desc *);
 void    reactor_desc_error(reactor_desc *);
 void    reactor_desc_events(reactor_desc *, int);
 int     reactor_desc_fd(reactor_desc *);
