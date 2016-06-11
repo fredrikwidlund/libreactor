@@ -12,7 +12,8 @@
 
 static inline void reactor_desc_close_final(reactor_desc *desc)
 {
-  if (desc->state == REACTOR_DESC_CLOSE_WAIT && !desc->ref)
+  if (desc->state == REACTOR_DESC_CLOSE_WAIT &&
+      desc->ref == 0)
     {
       reactor_user_dispatch(&desc->user, REACTOR_DESC_CLOSE, NULL);
       desc->state = REACTOR_DESC_CLOSED;
