@@ -104,6 +104,8 @@ void reactor_stream_close(reactor_stream *stream)
     return;
 
   reactor_desc_close(&stream->desc);
+  stream->state = REACTOR_STREAM_CLOSE_WAIT;
+  reactor_stream_close_final(stream);
 }
 
 void reactor_stream_event(void *state, int type, void *data)
