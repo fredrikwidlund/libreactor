@@ -24,7 +24,7 @@ src/reactor_core.h
 
 AUTOMAKE_OPTIONS = subdir-objects
 lib_LTLIBRARIES = libreactor_core.la
-libreactor_core_la_SOURCES = $(SOURCE_FILES) $(HEADER_FILES)
+libreactor_core_la_SOURCES = $(SOURCE_FILES) $(HEADER_FILES) src/picohttpparser/picohttpparser.h
 
 headerfilesdir = $(includedir)/reactor_core
 headerfiles_HEADERS = $(HEADER_FILES)
