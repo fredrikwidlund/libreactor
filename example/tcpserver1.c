@@ -8,6 +8,7 @@
 #include <sys/socket.h>
 #include <assert.h>
 #include <err.h>
+#include <errno.h>
 
 #include <dynamic.h>
 
@@ -22,18 +23,20 @@ static const char reply[] =
 
 void server_event(void *state, int type, void *data)
 {
+  reactor_desc *desc = state;
   char buf[65536];
-  int c, *fd;
+  int c;
   ssize_t n;
 
-  (void) state;
+  (void) data;
   if (type & REACTOR_DESC_READ)
     {
-      fd = data;
-      c = accept(*fd, NULL, NULL);
+      c = accept(reactor_desc_fd(desc), NULL, NULL);
       if (c == -1)
         err(1, "accept");
       n = recv(c, buf, sizeof buf, MSG_DONTWAIT);
+      if (n == -1 && errno != EAGAIN)
+        err(1, "recv");
       if (n > 0)
         {
           n = send(c, reply, sizeof reply - 1, MSG_DONTWAIT);
@@ -41,8 +44,6 @@ void server_event(void *state, int type, void *data)
             err(1, "send");
         }
 
-      if (n == -1)
-        err(1, "recv");
       (void) close(c);
     }
 }

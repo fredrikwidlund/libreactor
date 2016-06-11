@@ -23,16 +23,27 @@ struct client
 void stream_event(void *state, int type, void *data)
 {
   client *client = state;
+  reactor_stream_data *read = data;
 
-  (void) client;
   (void) data;
-  printf("stream event type %x\n", type);
+  printf("[stream event, type %x]\n", type);
+  switch (type)
+    {
+    case REACTOR_STREAM_READ:
+      printf("[read] %.*s\n", (int) read->size, read->base);
+      read->size = 0;
+      break;
+    case REACTOR_STREAM_SHUTDOWN:
+      reactor_stream_close(&client->stream);
+      break;
+    }
 }
 
 void tcp_event(void *state, int type, void *data)
 {
   client *client = state;
 
+  printf("[tcp event, type %x]\n", type);
   switch (type)
     {
     case REACTOR_TCP_CONNECT:

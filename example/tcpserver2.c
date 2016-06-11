@@ -61,14 +61,14 @@ void client_event(void *state, int type, void *data)
 
 void server_event(void *state, int type, void *data)
 {
+  reactor_desc *desc = state;
   reactor_stream *stream;
-  int c, *fd;
+  int c;
 
-  (void) state;
+  (void) data;
   if (type & REACTOR_DESC_READ)
     {
-      fd = data;
-      c = accept(*fd, NULL, NULL);
+      c = accept(reactor_desc_fd(desc), NULL, NULL);
       if (c >= 0)
         {
           stream = malloc(sizeof *stream);
