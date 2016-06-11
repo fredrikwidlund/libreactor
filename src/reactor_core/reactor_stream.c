@@ -14,7 +14,9 @@
 
 static inline void reactor_stream_close_final(reactor_stream *stream)
 {
-  if (stream->state == REACTOR_STREAM_CLOSE_WAIT && !stream->ref)
+  if (stream->state == REACTOR_STREAM_CLOSE_WAIT &&
+      stream->desc.state == REACTOR_DESC_CLOSED &&
+      stream->ref == 0)
     {
       buffer_clear(&stream->input);
       buffer_clear(&stream->output);
