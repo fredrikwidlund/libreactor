@@ -12,7 +12,27 @@
 #include "reactor_core.h"
 #include "reactor_stream.h"
 
-static __thread reactor_stream *current = NULL;
+static inline void reactor_stream_close_final(reactor_stream *stream)
+{
+  if (stream->state == REACTOR_STREAM_CLOSE_WAIT && !stream->ref)
+    {
+      buffer_clear(&stream->input);
+      buffer_clear(&stream->output);
+      stream->state = REACTOR_STREAM_CLOSED;
+      reactor_user_dispatch(&stream->user, REACTOR_STREAM_CLOSE, NULL);
+    }
+}
+
+static inline void reactor_stream_hold(reactor_stream *stream)
+{
+  stream->ref ++;
+}
+
+static inline void reactor_stream_release(reactor_stream *stream)
+{
+  stream->ref --;
+  reactor_stream_close_final(stream);
+}
 
 static size_t reactor_stream_desc_write(reactor_stream *stream, void *data, size_t size)
 {
@@ -86,21 +106,12 @@ void reactor_stream_close(reactor_stream *stream)
   reactor_desc_close(&stream->desc);
 }
 
-void reactor_stream_close_final(reactor_stream *stream)
-{
-  if (current == stream)
-    current = NULL;
-  buffer_clear(&stream->input);
-  buffer_clear(&stream->output);
-  stream->state = REACTOR_STREAM_CLOSED;
-  reactor_user_dispatch(&stream->user, REACTOR_STREAM_CLOSE, NULL);
-}
-
 void reactor_stream_event(void *state, int type, void *data)
 {
   reactor_stream *stream = state;
 
   (void) data;
+  reactor_stream_hold(stream);
   switch(type)
     {
     case REACTOR_DESC_ERROR:
@@ -109,17 +120,16 @@ void reactor_stream_event(void *state, int type, void *data)
     case REACTOR_DESC_READ:
       if (stream->state != REACTOR_STREAM_OPEN)
         break;
-      current = stream;
       reactor_stream_read(stream);
-      if (current && (stream->flags & REACTOR_STREAM_FLAGS_BLOCKED) == 0)
+      if ((stream->state == REACTOR_STREAM_OPEN ||
+           stream->state == REACTOR_STREAM_LINGER ) &&
+          (stream->flags & REACTOR_STREAM_FLAGS_BLOCKED) == 0)
         reactor_stream_flush(stream);
       break;
     case REACTOR_DESC_WRITE:
       stream->flags &= ~REACTOR_STREAM_FLAGS_BLOCKED;
-      current = stream;
       reactor_stream_flush(stream);
-      if (current &&
-          stream->state == REACTOR_STREAM_OPEN &&
+      if (stream->state == REACTOR_STREAM_OPEN &&
           (stream->flags & REACTOR_STREAM_FLAGS_BLOCKED) == 0)
         reactor_user_dispatch(&stream->user, REACTOR_STREAM_WRITE_AVAILABLE, NULL);
       break;
@@ -130,6 +140,7 @@ void reactor_stream_event(void *state, int type, void *data)
       reactor_stream_close_final(stream);
       break;
     }
+  reactor_stream_release(stream);
 }
 
 void reactor_stream_read(reactor_stream *stream)
@@ -153,11 +164,12 @@ void reactor_stream_read(reactor_stream *stream)
 
   if (n > 0)
     {
+      reactor_stream_hold(stream);
       data = (reactor_stream_data) {.base = buffer, .size = n};
-      current = stream;
       reactor_user_dispatch(&stream->user, REACTOR_STREAM_READ, &data);
-      if (current && data.size)
+      if (stream->state == REACTOR_STREAM_OPEN && data.size)
         buffer_insert(&stream->input, buffer_size(&stream->input), data.base, data.size);
+      reactor_stream_release(stream);
     }
 }
 

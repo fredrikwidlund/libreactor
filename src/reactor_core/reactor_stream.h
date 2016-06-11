@@ -10,8 +10,8 @@ enum reactor_stream_state
   REACTOR_STREAM_CLOSED,
   REACTOR_STREAM_OPEN,
   REACTOR_STREAM_LINGER,
-  REACTOR_STREAM_CLOSING,
-  REACTOR_STREAM_INVALID
+  REACTOR_STREAM_INVALID,
+  REACTOR_STREAM_CLOSE_WAIT,
 };
 
 enum reactor_stream_events
@@ -38,6 +38,7 @@ struct reactor_stream
   reactor_desc  desc;
   buffer        input;
   buffer        output;
+  int           ref;
 };
 
 typedef struct reactor_stream_data reactor_stream_data;
@@ -50,7 +51,6 @@ struct reactor_stream_data
 void   reactor_stream_init(reactor_stream *, reactor_user_callback *, void *);
 void   reactor_stream_open(reactor_stream *, int);
 void   reactor_stream_close(reactor_stream *);
-void   reactor_stream_close_final(reactor_stream *);
 void   reactor_stream_shutdown(reactor_stream *);
 void   reactor_stream_event(void *, int, void *);
 void   reactor_stream_error(reactor_stream *);
