@@ -28,18 +28,13 @@ struct reactor_tcp
 void reactor_tcp_init(reactor_tcp *, reactor_user_callback *, void *);
 void reactor_tcp_error(reactor_tcp *);
 void reactor_tcp_close(reactor_tcp *);
-void reactor_tcp_close_final(reactor_tcp *);
 void reactor_tcp_connect(reactor_tcp *, char *, char *);
 void reactor_tcp_listen(reactor_tcp *, char *, char *);
 void reactor_tcp_event(void *, int, void *);
 
 /*
-void reactor_tcp_server_event(void *, int, void *);
-int  reactor_tcp_server_listen(reactor_tcp_server *, int, struct sockaddr *, socklen_t);
 int  reactor_tcp_server_set_defer_accept(reactor_tcp_server *, int);
 int  reactor_tcp_server_set_quickack(reactor_tcp_server *, int);
-void reactor_tcp_server_error(reactor_tcp_server *);
-void reactor_tcp_server_close(reactor_tcp_server *);
 */
 
 #endif /* REACTOR_TCP_H_INCLUDED */

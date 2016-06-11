@@ -14,7 +14,13 @@
 #include "reactor_core.h"
 #include "reactor_tcp.h"
 
-static int reactor_tcp_bind(reactor_tcp *tcp, int s, struct sockaddr *sa, socklen_t sa_len)
+static void reactor_tcp_close_final(reactor_tcp *tcp)
+{
+  tcp->state = REACTOR_TCP_CLOSED;
+  reactor_user_dispatch(&tcp->user, REACTOR_TCP_CLOSE, NULL);
+}
+
+static int reactor_tcp_bind(int s, struct sockaddr *sa, socklen_t sa_len)
 {
   int e;
 
@@ -34,7 +40,6 @@ static int reactor_tcp_bind(reactor_tcp *tcp, int s, struct sockaddr *sa, sockle
   if (e == -1)
     return -1;
 
-  reactor_desc_open(&tcp->desc, s);
   return 0;
 }
 
@@ -57,12 +62,6 @@ void reactor_tcp_close(reactor_tcp *tcp)
       return;
 
   reactor_desc_close(&tcp->desc);
-}
-
-void reactor_tcp_close_final(reactor_tcp *tcp)
-{
-  tcp->state = REACTOR_TCP_CLOSED;
-  reactor_user_dispatch(&tcp->user, REACTOR_TCP_CLOSE, NULL);
 }
 
 void reactor_tcp_connect(reactor_tcp *tcp, char *node, char *service)
@@ -135,7 +134,7 @@ void reactor_tcp_listen(reactor_tcp *tcp, char *node, char *service)
       return;
     }
 
-  e = reactor_tcp_bind(tcp, s, ai->ai_addr, ai->ai_addrlen);
+  e = reactor_tcp_bind(s, ai->ai_addr, ai->ai_addrlen);
   freeaddrinfo(ai);
   if (e == -1)
     {
@@ -143,6 +142,8 @@ void reactor_tcp_listen(reactor_tcp *tcp, char *node, char *service)
       reactor_tcp_error(tcp);
       return;
     }
+
+  reactor_desc_open(&tcp->desc, s);
 }
 
 void reactor_tcp_event(void *state, int type, void *data)
@@ -150,10 +151,11 @@ void reactor_tcp_event(void *state, int type, void *data)
   reactor_tcp *tcp = state;
   int s;
 
+  (void) data;
   switch (type)
     {
     case REACTOR_DESC_READ:
-      s = accept(*(int *) data, NULL, NULL);
+      s = accept(reactor_desc_fd(&tcp->desc), NULL, NULL);
       if (s == -1)
         {
           reactor_tcp_error(tcp);
