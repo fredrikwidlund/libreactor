@@ -42,7 +42,7 @@ int reactor_core_run(void)
           p = vector_at(&core.polls, i);
           core.current = p->fd;
           if (p->revents)
-            reactor_desc_event(*(reactor_desc **) vector_at(&core.descs, i), p->revents, &core.current);
+            reactor_desc_event(*(reactor_desc **) vector_at(&core.descs, i), p->revents, NULL);
           if (core.current != -1)
             i ++;
         }
