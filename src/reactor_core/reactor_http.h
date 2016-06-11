@@ -24,9 +24,9 @@ typedef struct reactor_http reactor_http;
 struct reactor_http
 {
   int                   state;
+  int                   ref;
   reactor_user          user;
   reactor_tcp           tcp;
-  size_t                sessions;
 };
 
 typedef struct reactor_http_field reactor_http_field;
@@ -57,13 +57,6 @@ struct reactor_http_header
   reactor_http_field    fields[REACTOR_HTTP_MAX_FIELDS];
 };
 
-enum reactor_http_session_state
-{
-  REACTOR_HTTP_MESSAGE_HEADER,
-  REACTOR_HTTP_MESSAGE_BODY,
-  REACTOR_HTTP_MESSAGE_COMPLETE,
-};
-
 enum reactor_http_message_flags
 {
   REACTOR_HTTP_MESSAGE_CHUNKED = 0x01
@@ -80,10 +73,19 @@ struct reactor_http_message
   void                 *body;
 };
 
+enum reactor_http_session_state
+{
+  REACTOR_HTTP_SESSION_HEADER,
+  REACTOR_HTTP_SESSION_BODY,
+  REACTOR_HTTP_SESSION_COMPLETE,
+  REACTOR_HTTP_SESSION_CLOSE_WAIT
+};
+
 typedef struct reactor_http_session reactor_http_session;
 struct reactor_http_session
 {
   int                   state;
+  int                   ref;
   reactor_http_message  message;
   reactor_stream        stream;
   reactor_http         *http;

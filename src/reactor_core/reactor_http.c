@@ -9,8 +9,8 @@
 #include <netinet/tcp.h>
 
 #include <dynamic.h>
-#include "picohttpparser/picohttpparser.h"
 
+#include "picohttpparser/picohttpparser.h"
 #include "reactor_user.h"
 #include "reactor_desc.h"
 #include "reactor_core.h"
@@ -18,7 +18,16 @@
 #include "reactor_tcp.h"
 #include "reactor_http.h"
 
-static __thread reactor_http_session *current_session = NULL;
+void reactor_http_close_final(reactor_http *http)
+{
+  if (http->state == REACTOR_HTTP_CLOSE_WAIT &&
+      http->tcp.state == REACTOR_TCP_CLOSED &&
+      http->ref == 0)
+    {
+      http->state = REACTOR_HTTP_CLOSED;
+      reactor_user_dispatch(&http->user, REACTOR_HTTP_CLOSE, NULL);
+    }
+}
 
 void reactor_http_init(reactor_http *http, reactor_user_callback *callback, void *state)
 {
@@ -51,19 +60,9 @@ void reactor_http_close(reactor_http *http)
       http->state != REACTOR_HTTP_INVALID)
     return;
 
-  http->state = REACTOR_HTTP_CLOSE_WAIT;
   reactor_tcp_close(&http->tcp);
-}
-
-void reactor_http_close_final(reactor_http *http)
-{
-  if (http->state != REACTOR_HTTP_CLOSE_WAIT ||
-      http->tcp.state != REACTOR_TCP_CLOSED ||
-      http->sessions)
-    return;
-
-  http->state = REACTOR_HTTP_CLOSED;
-  reactor_user_dispatch(&http->user, REACTOR_HTTP_CLOSE, NULL);
+  http->state = REACTOR_HTTP_CLOSE_WAIT;
+  reactor_http_close_final(http);
 }
 
 void reactor_http_tcp_event(void *state, int type, void *data)
@@ -83,7 +82,7 @@ void reactor_http_tcp_event(void *state, int type, void *data)
           reactor_http_error(http);
           return;
         };
-      http->sessions ++;
+      http->ref ++;
       reactor_http_session_init(session, http);
       reactor_stream_init(&session->stream, reactor_http_session_event, session);
       reactor_stream_open(&session->stream, s);
@@ -100,9 +99,35 @@ void reactor_http_tcp_event(void *state, int type, void *data)
     }
 }
 
+static inline void reactor_http_session_close_final(reactor_http_session *session)
+{
+  reactor_http *http;
+
+  if (session->state == REACTOR_HTTP_SESSION_CLOSE_WAIT &&
+      session->stream.state == REACTOR_STREAM_CLOSED &&
+      session->ref == 0)
+    {
+      http = session->http;
+      free(session);
+      http->ref --;
+      reactor_http_close_final(http);
+    }
+}
+
+static inline void reactor_http_session_hold(reactor_http_session *session)
+{
+  session->ref ++;
+}
+
+static inline void reactor_http_session_release(reactor_http_session *session)
+{
+  session->ref --;
+  reactor_http_session_close_final(session);
+}
+
 void reactor_http_session_init(reactor_http_session *session, reactor_http *http)
 {
-  *session = (reactor_http_session) {.state = REACTOR_HTTP_MESSAGE_HEADER, .http = http};
+  *session = (reactor_http_session) {.state = REACTOR_HTTP_SESSION_HEADER, .http = http};
 }
 
 void reactor_http_session_error(reactor_http_session *session)
@@ -113,8 +138,6 @@ void reactor_http_session_error(reactor_http_session *session)
 
 void reactor_http_session_close(reactor_http_session *session)
 {
-  if (current_session == session)
-    current_session = NULL;
   reactor_stream_close(&session->stream);
 }
 
@@ -131,10 +154,7 @@ void reactor_http_session_event(void *state, int type, void *data)
       reactor_http_session_close(session);
       break;
     case REACTOR_STREAM_CLOSE:
-      session->http->sessions --;
-      if (session->http->state == REACTOR_HTTP_CLOSE_WAIT)
-        reactor_http_close_final(session->http);
-      free(session);
+      reactor_http_session_close_final(session);
     }
 }
 
@@ -142,30 +162,31 @@ void reactor_http_session_read(reactor_http_session *session, reactor_stream_dat
 {
   size_t size;
 
-  current_session = session;
+  reactor_http_session_hold(session);
   while (data->size)
     {
-      if (session->state == REACTOR_HTTP_MESSAGE_HEADER)
+      if (session->state == REACTOR_HTTP_SESSION_HEADER)
         reactor_http_session_read_header(session, data);
-      if (!current_session)
-        return;
+      if (session->state == REACTOR_HTTP_SESSION_CLOSE_WAIT)
+        break;
 
       size = session->message.header_size + session->message.body_size;
       if (size < session->message.body_size)
         {
           reactor_http_session_error(session);
-          return;
+          break;
         }
 
-      if (session->state != REACTOR_HTTP_MESSAGE_BODY || data->size < size)
-        return;
-      session->state = REACTOR_HTTP_MESSAGE_BODY;
+      if (session->state != REACTOR_HTTP_SESSION_BODY || data->size < size)
+        break;
+      session->state = REACTOR_HTTP_SESSION_BODY;
       data->base += size;
       data->size -= size;
       reactor_user_dispatch(&session->http->user, REACTOR_HTTP_REQUEST, session);
-      if (!current_session)
-        return;
+      if (session->state == REACTOR_HTTP_SESSION_CLOSE_WAIT)
+        break;
     }
+  reactor_http_session_release(session);
 }
 
 void reactor_http_session_read_header(reactor_http_session *session, reactor_stream_data *data)
@@ -199,6 +220,6 @@ void reactor_http_session_read_header(reactor_http_session *session, reactor_str
           if (strcasecmp(header->fields[i].name, "Content-Length") == 0)
             session->message.body_size = strtoul(header->fields[i].value, NULL, 0);
         }
-      session->state = REACTOR_HTTP_MESSAGE_BODY;
+      session->state = REACTOR_HTTP_SESSION_BODY;
     }
 }
