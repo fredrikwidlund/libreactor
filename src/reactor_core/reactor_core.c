@@ -11,7 +11,6 @@
 #include "reactor_core.h"
 
 static __thread reactor_core core = {.state = REACTOR_CORE_CLOSED};
-static __thread int current = -1;
 
 int reactor_core_open(void)
 {
@@ -41,10 +40,10 @@ int reactor_core_run(void)
       while (i < vector_size(&core.polls))
         {
           p = vector_at(&core.polls, i);
-          current = p->fd;
+          core.current = p->fd;
           if (p->revents)
-            reactor_desc_event(*(reactor_desc **) vector_at(&core.descs, i), p->revents, &current);
-          if (current != -1)
+            reactor_desc_event(*(reactor_desc **) vector_at(&core.descs, i), p->revents, &core.current);
+          if (core.current != -1)
             i ++;
         }
     }
@@ -100,8 +99,8 @@ void reactor_core_desc_remove(reactor_desc *desc)
 {
   int last;
 
-  if (((struct pollfd *) vector_at(&core.polls, desc->index))->fd == current)
-    current = -1;
+  if (((struct pollfd *) vector_at(&core.polls, desc->index))->fd == core.current)
+    core.current = -1;
   last = vector_size(&core.polls) - 1;
   if (desc->index != last)
     {

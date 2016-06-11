@@ -12,6 +12,7 @@ typedef struct reactor_core reactor_core;
 struct reactor_core
 {
   int    state;
+  int    current;
   vector polls;
   vector descs;
 };
