@@ -14,53 +14,48 @@
 
 #include "reactor_core.h"
 
-char *request = "GET / HTTP/1.0\r\n\r\n";
+struct app
+{
+  char *host;
+  char *service;
+  char *path;
+};
 
 void http_event(void *state, int type, void *data)
 {
-  reactor_http *http = state;
+  struct app *app = state;
   reactor_http_session *session = data;
-  reactor_http_message response;
 
   switch (type)
     {
     case REACTOR_HTTP_SESSION:
-      /*
-      reactor_http_session_request(session, "GET", "/", 1,
-                                   1, (reactor_http_field[]) {{"Host", "localhost"}},
-                                   0, NULL);
-      */
-      reactor_stream_write(&session->stream, request, strlen(request));
+      reactor_http_session_message(session, (reactor_http_message[]) {{
+            .type = REACTOR_HTTP_MESSAGE_REQUEST, .version = 1, .method = "GET", .path = app->path,
+            .header_size = 1, .header = (reactor_http_header[]) {{"Host", app->host}},
+            .body_size = 0
+          }});
       reactor_stream_flush(&session->stream);
       break;
-    case REACTOR_HTTP_RESPONSE:
-      break;
-    case REACTOR_HTTP_REQUEST:
-      if (strcmp(session->message.header.method, "GET") == 0 &&
-          strcmp(session->message.header.path, "/") == 0)
-        reactor_http_message_init_response(&response, 1, 200, "OK",
-                                           1, (reactor_http_field[]) {{"Content-Type", "text/plain"}},
-                                           4, (void *) "test");
-      else
-        reactor_http_message_init_response(&response, 1, 404, "Not Found",
-                                           0, NULL,
-                                           0, NULL);
-      reactor_http_session_respond(session, &response);
-      break;
-    case REACTOR_HTTP_ERROR:
-      reactor_http_close(http);
+    case REACTOR_HTTP_MESSAGE:
+      (void) fprintf(stderr, "[status %d]\n", session->message.status);
+      (void) fprintf(stdout, "%.*s", (int) session->message.body_size, (char *) session->message.body);
+      reactor_http_session_close(session);
       break;
     }
 }
 
-int main()
+int main(int argc, char **argv)
 {
+  struct app app;
   reactor_http http;
 
-  reactor_core_open();
-  reactor_http_init(&http, http_event, &http);
-  reactor_http_client(&http, "localhost", "80");
-  assert(reactor_core_run() == 0);
+  if (argc != 4)
+    errx(1, "usage: http_client host service path");
 
+  app = (struct app) {.host = argv[1], .service = argv[2], .path = argv[3]};
+  reactor_core_open();
+  reactor_http_init(&http, http_event, &app);
+  reactor_http_open(&http, argv[1], argv[2], 0);
+  assert(reactor_core_run() == 0);
   reactor_core_close();
 }

@@ -44,11 +44,13 @@ maintainer-clean-local:; rm -rf autotools m4 libreactor_core-?.?.?
 bin_PROGRAMS = \
 example/tcpclient1 \
 example/tcp_server \
+example/http_client \
 example/http_server \
 example/rest_server
 
 example_tcpclient1_LDADD = -L. -lreactor_core -ldynamic
 example_tcp_server_LDADD = -L. -lreactor_core -ldynamic
+example_http_client_LDADD = -L. -lreactor_core -ldynamic
 example_http_server_LDADD = -L. -lreactor_core -ldynamic
 example_rest_server_LDADD = -L. -lreactor_core -ldynamic
 
