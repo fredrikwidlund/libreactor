@@ -2,3 +2,5 @@ Todo
 * add tcp options like defer_accept, quickack, nodelay, ...
 * chunked data
 * streaming data
+* resolver
+* signal handling
