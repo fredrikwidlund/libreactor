@@ -57,6 +57,8 @@ void   reactor_stream_error(reactor_stream *);
 void   reactor_stream_read(reactor_stream *);
 void   reactor_stream_write(reactor_stream *, void *, size_t);
 void   reactor_stream_write_direct(reactor_stream *, void *, size_t);
+void   reactor_stream_write_string(reactor_stream *, char *);
+void   reactor_stream_write_unsigned(reactor_stream *, uint32_t);
 void   reactor_stream_flush(reactor_stream *);
 void   reactor_stream_consume(reactor_stream_data *, size_t);
 

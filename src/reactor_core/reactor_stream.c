@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <string.h>
 #include <unistd.h>
 #include <errno.h>
 #include <sys/socket.h>
@@ -217,6 +218,52 @@ void reactor_stream_write_direct(reactor_stream *stream, void *base, size_t size
       else
         reactor_stream_write(stream, (char *) base + n, size - n);
     }
+}
+
+void reactor_stream_write_string(reactor_stream *stream, char *string)
+{
+  reactor_stream_write(stream, string, strlen(string));
+}
+
+void reactor_stream_write_unsigned(reactor_stream *stream, uint32_t n)
+{
+  static const uint32_t pow10[] = {0, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000};
+  static const char digits[200] =
+    "0001020304050607080910111213141516171819202122232425262728293031323334353637383940414243444546474849"
+    "5051525354555657585960616263646566676869707172737475767778798081828384858687888990919293949596979899";
+  uint32_t t, size, x;
+  buffer *b;
+  char *base;
+  int e;
+
+  t = (32 - __builtin_clz(n | 1)) * 1233 >> 12;
+  size = t - (n < pow10[t]) + 1;
+
+  b = &stream->output;
+  e = buffer_reserve(b, buffer_size(b) + size);
+  if (e == -1)
+    {
+      reactor_stream_error(stream);
+      return;
+    }
+  b->size += size;
+  base = buffer_data(b) + buffer_size(b);
+
+  while (n >= 100)
+    {
+      x = (n % 100) << 1;
+      n /= 100;
+      *--base = digits[x + 1];
+      *--base = digits[x];
+    }
+  if (n >= 10)
+    {
+      x = n << 1;
+      *--base = digits[x + 1];
+      *--base = digits[x];
+    }
+  else
+    *--base = n + '0';
 }
 
 void reactor_stream_flush(reactor_stream *stream)
