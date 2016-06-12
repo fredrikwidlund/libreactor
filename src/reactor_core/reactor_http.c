@@ -159,6 +159,26 @@ void reactor_http_session_event(void *state, int type, void *data)
     }
 }
 
+static inline void reactor_http_session_update_pointer(char **pointer, off_t offset)
+{
+  *pointer += offset;
+}
+
+static inline void reactor_http_session_update_request(reactor_http_message *message, off_t offset)
+{
+  size_t i;
+
+  reactor_http_session_update_pointer((char **) &message->base, offset);
+  reactor_http_session_update_pointer((char **) &message->body, offset);
+  reactor_http_session_update_pointer(&message->header.method, offset);
+  reactor_http_session_update_pointer(&message->header.path, offset);
+  for (i = 0; i < message->header.fields_size; i ++)
+    {
+      reactor_http_session_update_pointer(&message->header.fields[i].name, offset);
+      reactor_http_session_update_pointer(&message->header.fields[i].value, offset);
+    }
+}
+
 void reactor_http_session_read(reactor_http_session *session, reactor_stream_data *data)
 {
   size_t size;
@@ -168,7 +188,7 @@ void reactor_http_session_read(reactor_http_session *session, reactor_stream_dat
     {
       if (session->state == REACTOR_HTTP_SESSION_HEADER)
         reactor_http_session_read_header(session, data);
-      if (session->state == REACTOR_HTTP_SESSION_CLOSE_WAIT)
+      if (session->state != REACTOR_HTTP_SESSION_BODY)
         break;
 
       size = session->message.header_size + session->message.body_size;
@@ -177,15 +197,15 @@ void reactor_http_session_read(reactor_http_session *session, reactor_stream_dat
           reactor_http_session_error(session);
           break;
         }
-
-      if (session->state != REACTOR_HTTP_SESSION_BODY || data->size < size)
+      if (data->size < size)
         break;
-      session->state = REACTOR_HTTP_SESSION_BODY;
-      data->base += size;
-      data->size -= size;
+
+      if (session->message.base != data->base)
+        reactor_http_session_update_request(&session->message, (char *) data->base - (char *) session->message.base);
       reactor_user_dispatch(&session->http->user, REACTOR_HTTP_REQUEST, session);
       if (session->state == REACTOR_HTTP_SESSION_CLOSE_WAIT)
         break;
+      reactor_stream_consume(data, size);
       session->state = REACTOR_HTTP_SESSION_HEADER;
     }
   reactor_http_session_release(session);
@@ -210,6 +230,7 @@ void reactor_http_session_read_header(reactor_http_session *session, reactor_str
     {
       session->message.header_size = n;
       session->message.base = data->base;
+      session->message.body = (char *) data->base + n;
       session->message.body_size = 0;
       header->method[method_size] = 0;
       header->path[path_size] = 0;

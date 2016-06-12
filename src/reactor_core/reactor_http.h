@@ -91,24 +91,6 @@ struct reactor_http_session
   reactor_http         *http;
 };
 
-/*
-typedef struct reactor_http_request reactor_http_request;
-struct reactor_http_request
-{
-  reactor_http_session *session;
-  char                 *base;
-  char                 *method;
-  char                 *path;
-  int                   minor_version;
-  char                 *host;
-  char                 *service;
-  char                 *content;
-  size_t                content_size;
-  size_t                fields_count;
-  reactor_http_field    fields[REACTOR_HTTP_MAX_FIELDS];
-};
-*/
-
 void reactor_http_init(reactor_http *, reactor_user_callback *, void *);
 void reactor_http_server(reactor_http *, char *, char *);
 void reactor_http_error(reactor_http *);
