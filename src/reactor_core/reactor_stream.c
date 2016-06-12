@@ -237,3 +237,9 @@ void reactor_stream_flush(reactor_stream *stream)
   if (stream->state == REACTOR_STREAM_LINGER && buffer_size(&stream->output) == 0)
     reactor_stream_close(stream);
 }
+
+void reactor_stream_consume(reactor_stream_data *data, size_t size)
+{
+  data->base += size;
+  data->size -= size;
+}
