@@ -58,5 +58,6 @@ void   reactor_stream_read(reactor_stream *);
 void   reactor_stream_write(reactor_stream *, void *, size_t);
 void   reactor_stream_write_direct(reactor_stream *, void *, size_t);
 void   reactor_stream_flush(reactor_stream *);
+void   reactor_stream_consume(reactor_stream_data *, size_t);
 
 #endif /* REACTOR_STREAM_H_INCLUDED */
