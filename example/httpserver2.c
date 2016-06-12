@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <netinet/in.h>
@@ -13,30 +14,25 @@
 
 #include "reactor_core.h"
 
-static char reply[] =
-  "HTTP/1.0 200 OK\r\n"
-  "Content-Length: 4\r\n"
-  "Content-Type: plain/html\r\n"
-  "Connection: keep-alive\r\n"
-  "\r\n"
-  "test";
-
 void http_event(void *state, int type, void *data)
 {
   reactor_http *http = state;
-  reactor_http_session *session;
-  size_t i;
+  reactor_http_session *session = data;
+  reactor_http_message response;
 
-  (void) http;
   switch (type)
     {
     case REACTOR_HTTP_REQUEST:
-      session = data;
-      printf("method: %s\n", session->message.header.method);
-      printf("body %lu\n%.*s\n", session->message.body_size, (int) session->message.body_size, (char *) session->message.body);
-      for (i = 0; i < session->message.header.fields_size; i ++)
-        printf("header [%lu] %s = %s\n", i, session->message.header.fields[i].name, session->message.header.fields[i].value);
-      reactor_stream_write_direct(&session->stream, reply, sizeof reply - 1);
+      if (strcmp(session->message.header.method, "GET") == 0 &&
+          strcmp(session->message.header.path, "/") == 0)
+        reactor_http_message_init_response(&response, 1, 200, "OK",
+                                           1, (reactor_http_field[]) {{"Content-Type", "text/plain"}},
+                                           4, (void *) "test");
+      else
+        reactor_http_message_init_response(&response, 1, 404, "Not Found",
+                                           0, NULL,
+                                           0, NULL);
+      reactor_http_session_respond(session, &response);
       break;
     case REACTOR_HTTP_ERROR:
       reactor_http_close(http);
