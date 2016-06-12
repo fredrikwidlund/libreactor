@@ -101,11 +101,8 @@ void reactor_stream_shutdown(reactor_stream *stream)
 
 void reactor_stream_close(reactor_stream *stream)
 {
-  if (stream->state != REACTOR_STREAM_OPEN &&
-      stream->state != REACTOR_STREAM_LINGER &&
-      stream->state != REACTOR_STREAM_INVALID)
+  if (stream->state == REACTOR_STREAM_CLOSED)
     return;
-
   reactor_desc_close(&stream->desc);
   stream->state = REACTOR_STREAM_CLOSE_WAIT;
   reactor_stream_close_final(stream);
@@ -142,7 +139,7 @@ void reactor_stream_event(void *state, int type, void *data)
       reactor_user_dispatch(&stream->user, REACTOR_STREAM_SHUTDOWN, NULL);
       break;
     case REACTOR_DESC_CLOSE:
-      reactor_stream_close_final(stream);
+      reactor_stream_close(stream);
       break;
     }
   reactor_stream_release(stream);

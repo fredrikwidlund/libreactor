@@ -18,7 +18,7 @@
 #include "reactor_tcp.h"
 #include "reactor_http.h"
 
-void reactor_http_close_final(reactor_http *http)
+static inline void reactor_http_close_final(reactor_http *http)
 {
   if (http->state == REACTOR_HTTP_CLOSE_WAIT &&
       http->tcp.state == REACTOR_TCP_CLOSED &&
@@ -56,8 +56,7 @@ void reactor_http_error(reactor_http *http)
 
 void reactor_http_close(reactor_http *http)
 {
-  if (http->state != REACTOR_HTTP_OPEN &&
-      http->state != REACTOR_HTTP_INVALID)
+  if (http->state == REACTOR_HTTP_CLOSED)
     return;
 
   reactor_tcp_close(&http->tcp);
@@ -91,7 +90,7 @@ void reactor_http_tcp_event(void *state, int type, void *data)
       reactor_user_dispatch(&http->user, REACTOR_HTTP_SHUTDOWN, NULL);
       break;
     case REACTOR_TCP_CLOSE:
-      reactor_http_close_final(http);
+      reactor_http_close(http);
       break;
     case REACTOR_TCP_ERROR:
       reactor_http_error(http);
@@ -173,7 +172,12 @@ void reactor_http_session_error(reactor_http_session *session)
 
 void reactor_http_session_close(reactor_http_session *session)
 {
+  if (session->state == REACTOR_HTTP_SESSION_CLOSED)
+    return;
+
   reactor_stream_close(&session->stream);
+  session->state = REACTOR_HTTP_SESSION_CLOSE_WAIT;
+  reactor_http_session_close_final(session);
 }
 
 void reactor_http_session_event(void *state, int type, void *data)
@@ -190,7 +194,7 @@ void reactor_http_session_event(void *state, int type, void *data)
       reactor_http_session_close(session);
       break;
     case REACTOR_STREAM_CLOSE:
-      reactor_http_session_close_final(session);
+      reactor_http_session_close(session);
     }
 }
 

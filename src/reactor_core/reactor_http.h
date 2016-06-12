@@ -54,7 +54,7 @@ struct reactor_http_header
     };
   };
   size_t                fields_size;
-  reactor_http_field   *fields; //[REACTOR_HTTP_MAX_FIELDS];
+  reactor_http_field   *fields;
 };
 
 enum reactor_http_message_flags
@@ -75,6 +75,7 @@ struct reactor_http_message
 
 enum reactor_http_session_state
 {
+  REACTOR_HTTP_SESSION_CLOSED,
   REACTOR_HTTP_SESSION_HEADER,
   REACTOR_HTTP_SESSION_BODY,
   REACTOR_HTTP_SESSION_COMPLETE,
