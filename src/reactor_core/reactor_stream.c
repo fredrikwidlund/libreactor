@@ -139,7 +139,7 @@ void reactor_stream_event(void *state, int type, void *data)
       reactor_user_dispatch(&stream->user, REACTOR_STREAM_SHUTDOWN, NULL);
       break;
     case REACTOR_DESC_CLOSE:
-      reactor_stream_close(stream);
+      reactor_stream_close_final(stream);
       break;
     }
   reactor_stream_release(stream);
@@ -163,7 +163,7 @@ void reactor_stream_read(reactor_stream *stream)
 
   if (n == 0)
     {
-      reactor_stream_shutdown(stream);
+      reactor_user_dispatch(&stream->user, REACTOR_STREAM_SHUTDOWN, NULL);
       return;
     }
 

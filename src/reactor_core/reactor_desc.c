@@ -62,16 +62,16 @@ void reactor_desc_open(reactor_desc *desc, int fd)
 
 void reactor_desc_close(reactor_desc *desc)
 {
-  if (desc->state == REACTOR_DESC_OPEN || desc->state == REACTOR_DESC_INVALID)
+  if (desc->state == REACTOR_DESC_CLOSED)
+    return;
+
+  if (desc->index >= 0)
     {
-      if (desc->index >= 0)
-        {
-          (void) close(reactor_core_desc_fd(desc));
-          reactor_core_desc_remove(desc);
-        }
-      desc->state = REACTOR_DESC_CLOSE_WAIT;
-      reactor_desc_close_final(desc);
+      (void) close(reactor_core_desc_fd(desc));
+      reactor_core_desc_remove(desc);
     }
+  desc->state = REACTOR_DESC_CLOSE_WAIT;
+  reactor_desc_close_final(desc);
 }
 
 void reactor_desc_error(reactor_desc *desc)

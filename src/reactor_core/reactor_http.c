@@ -284,6 +284,9 @@ void reactor_http_session_event(void *state, int type, void *data)
     case REACTOR_STREAM_READ:
       reactor_http_session_read(session, read);
       break;
+    case REACTOR_STREAM_ERROR:
+      reactor_http_session_error(session);
+      break;
     case REACTOR_STREAM_SHUTDOWN:
       reactor_http_session_close(session);
       break;
