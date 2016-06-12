@@ -24,7 +24,7 @@ void http_event(void *state, int type, void *data)
     case REACTOR_HTTP_MESSAGE:
       if (strcmp(session->message.method, "GET") == 0 &&
           strcmp(session->message.path, "/") == 0)
-        reactor_http_session_respond(session, (reactor_http_message[]) {{
+        reactor_http_session_message(session, (reactor_http_message[]) {{
               .version = 1, .status = 200, .reason = "OK",
               .header_size = 1, .header = (reactor_http_header[]) {{"Content-Type", "text/plain"}},
               .body_size = 4, .body = "test"

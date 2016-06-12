@@ -42,9 +42,16 @@ struct reactor_http_header
   char                 *value;
 };
 
+enum reactor_http_message_type
+{
+  REACTOR_HTTP_MESSAGE_REQUEST,
+  REACTOR_HTTP_MESSAGE_RESPONSE
+};
+
 typedef struct reactor_http_message reactor_http_message;
 struct reactor_http_message
 {
+  int                   type;
   int                   version;
   union
   {
@@ -95,20 +102,15 @@ void reactor_http_init(reactor_http *, reactor_user_callback *, void *);
 void reactor_http_open(reactor_http *, char *, char *, int);
 void reactor_http_error(reactor_http *);
 void reactor_http_close(reactor_http *);
-void reactor_http_tcp_event(void *, int, void *);
+void reactor_http_event(void *, int, void *);
+
+reactor_http_message reactor_http_message_text(char *);
 
 void reactor_http_session_new(reactor_http_session **, reactor_http *);
 void reactor_http_session_init(reactor_http_session *, reactor_http *);
 void reactor_http_session_error(reactor_http_session *);
 void reactor_http_session_close(reactor_http_session *);
-void reactor_http_session_request_event(void *, int, void *);
-void reactor_http_session_request_read(reactor_http_session *, reactor_stream_data *);
-void reactor_http_session_request_parse(reactor_http_session *, reactor_stream_data *);
-void reactor_http_session_read_body(reactor_http_session *, reactor_stream_data *);
-void reactor_http_session_respond(reactor_http_session *, reactor_http_message *);
+void reactor_http_session_event(void *, int, void *);
+void reactor_http_session_message(reactor_http_session *, reactor_http_message *);
 
-/*
-void reactor_http_message_init_response(reactor_http_message *, int, int, char *, size_t, reactor_http_field *,
-                                        size_t, void *);
-*/
 #endif /* REACTOR_HTTP_H_INCLUDED */

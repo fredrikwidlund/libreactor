@@ -222,7 +222,8 @@ void reactor_rest_add_regex(reactor_rest *rest, char *method, char *regex, react
 void reactor_rest_respond(reactor_rest_request *request, int status, size_t header_size, reactor_http_header *header,
                           size_t body_size, void *body)
 {
-  reactor_http_session_respond(request->session, (reactor_http_message[]) {{
+  reactor_http_session_message(request->session, (reactor_http_message[]) {{
+          .type = REACTOR_HTTP_MESSAGE_RESPONSE,
           .version = 1,
           .status = status,
           .reason = "OK",
@@ -231,6 +232,11 @@ void reactor_rest_respond(reactor_rest_request *request, int status, size_t head
           .body_size = body_size,
           .body = body
           }});
+}
+
+void reactor_rest_text(reactor_rest_request *request, char *text)
+{
+  reactor_http_session_message(request->session, (reactor_http_message[]) {reactor_http_message_text(text)});
 }
 
 /*

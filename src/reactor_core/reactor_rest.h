@@ -68,6 +68,8 @@ void reactor_rest_event(void *, int, void *);
 void reactor_rest_add_match(reactor_rest *, char *, char *, reactor_rest_handler *, void *);
 void reactor_rest_add_regex(reactor_rest *, char *, char *, reactor_rest_handler *, void *);
 void reactor_rest_respond(reactor_rest_request *, int, size_t, reactor_http_header *, size_t, void *);
+void reactor_rest_text(reactor_rest_request *, char *);
+
 /*
 int  reactor_rest_match(char *, const char *, size_t);
 void reactor_rest_respond_fields(reactor_rest_request *, unsigned, char *, char *, size_t, reactor_http_field *, size_t);

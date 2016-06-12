@@ -8,11 +8,10 @@
 
 #include "reactor_core.h"
 
-void status(void *state, reactor_rest_request *request)
+void hello_world(void *state, reactor_rest_request *request)
 {
-  reactor_rest_respond(request, 200,
-                       1, (reactor_http_header[]) {{"Content-Type", "application/json"}},
-                       strlen((char *) state), state);
+  (void) state;
+  reactor_rest_text(request, "hello world");
 }
 
 int main()
@@ -20,9 +19,9 @@ int main()
   reactor_rest rest;
 
   reactor_core_open();
-  reactor_rest_init(&rest, NULL, &rest);
+  reactor_rest_init(&rest, NULL, NULL);
   reactor_rest_open(&rest, "localhost", "80", 0);
-  reactor_rest_add_match(&rest, "GET", "/", status, "{\"status\":\"ok\"}");
+  reactor_rest_add_match(&rest, "GET", "/", hello_world, NULL);
   assert(reactor_core_run() == 0);
   reactor_core_close();
 }
