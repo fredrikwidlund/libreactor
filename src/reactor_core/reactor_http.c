@@ -36,6 +36,18 @@ void reactor_http_init(reactor_http *http, reactor_user_callback *callback, void
   reactor_tcp_init(&http->tcp, reactor_http_tcp_event, http);
 }
 
+void reactor_http_client(reactor_http *http, char *node, char *service)
+{
+  if (http->state != REACTOR_HTTP_CLOSED)
+    {
+      reactor_http_error(http);
+      return;
+    }
+
+  http->state = REACTOR_HTTP_OPEN;
+  reactor_tcp_connect(&http->tcp, node, service);
+}
+
 void reactor_http_server(reactor_http *http, char *node, char *service)
 {
   if (http->state != REACTOR_HTTP_CLOSED)
@@ -72,6 +84,7 @@ void reactor_http_tcp_event(void *state, int type, void *data)
 
   switch (type)
     {
+    case REACTOR_TCP_CONNECT:
     case REACTOR_TCP_ACCEPT:
       s = *(int *) data;
       session = malloc(sizeof *session);
@@ -85,6 +98,7 @@ void reactor_http_tcp_event(void *state, int type, void *data)
       reactor_http_session_init(session, http);
       reactor_stream_init(&session->stream, reactor_http_session_event, session);
       reactor_stream_open(&session->stream, s);
+      reactor_user_dispatch(&http->user, REACTOR_HTTP_SESSION, session);
       break;
     case REACTOR_TCP_SHUTDOWN:
       reactor_user_dispatch(&http->user, REACTOR_HTTP_SHUTDOWN, NULL);
@@ -185,6 +199,7 @@ void reactor_http_session_event(void *state, int type, void *data)
   reactor_http_session *session = state;
   reactor_stream_data *read = data;
 
+  printf("stream event %d\n", type);
   switch (type)
     {
     case REACTOR_STREAM_READ:

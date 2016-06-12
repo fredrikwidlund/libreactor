@@ -15,7 +15,9 @@ enum reactor_http_state
 enum reactor_http_events
 {
   REACTOR_HTTP_ERROR,
+  REACTOR_HTTP_SESSION,
   REACTOR_HTTP_REQUEST,
+  REACTOR_HTTP_RESPONSE,
   REACTOR_HTTP_SHUTDOWN,
   REACTOR_HTTP_CLOSE
 };
@@ -94,6 +96,7 @@ struct reactor_http_session
 };
 
 void reactor_http_init(reactor_http *, reactor_user_callback *, void *);
+void reactor_http_client(reactor_http *, char *, char *);
 void reactor_http_server(reactor_http *, char *, char *);
 void reactor_http_error(reactor_http *);
 void reactor_http_close(reactor_http *);
