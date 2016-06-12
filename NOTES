@@ -1,5 +1,7 @@
 Todo
 * add tcp options like defer_accept, quickack, nodelay, ...
+* stream write notify function
+* auto flush stream improvements
 * chunked data
 * streaming data
 * resolver
