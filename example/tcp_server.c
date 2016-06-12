@@ -13,25 +13,27 @@
 
 #include "reactor_core.h"
 
-static char reply[] =
-  "HTTP/1.0 200 OK\r\n"
-  "Content-Length: 4\r\n"
-  "Content-Type: plain/html\r\n"
-  "Connection: keep-alive\r\n"
-  "\r\n"
-  "test";
-
 void client_event(void *state, int type, void *data)
 {
   reactor_stream *stream = state;
+  reactor_stream_data *read = data;
+  static char reply[] =
+    "HTTP/1.1 200 OK\r\n"
+    "Content-Length: 4\r\n"
+    "Content-Type: text/plain\r\n"
+    "\r\n"
+    "test";
 
   (void) data;
   switch (type)
     {
-    case REACTOR_STREAM_ERROR:
-      break;
     case REACTOR_STREAM_READ:
-      reactor_stream_write_direct(stream, reply, sizeof reply - 1);
+      reactor_stream_consume(read, read->size);
+      reactor_stream_write(stream, reply, sizeof reply - 1);
+      break;
+    case REACTOR_STREAM_ERROR:
+    case REACTOR_STREAM_SHUTDOWN:
+      reactor_stream_close(stream);
       break;
     case REACTOR_STREAM_CLOSE:
       free(stream);
@@ -41,6 +43,7 @@ void client_event(void *state, int type, void *data)
 
 void event(void *state, int type, void *data)
 {
+  reactor_tcp *tcp = state;
   reactor_stream *stream;
 
   (void) state;
@@ -52,7 +55,8 @@ void event(void *state, int type, void *data)
       reactor_stream_open(stream, *(int *) data);
       break;
     case REACTOR_TCP_ERROR:
-      err(1, "event");
+    case REACTOR_TCP_SHUTDOWN:
+      reactor_tcp_close(tcp);
       break;
     }
 }
@@ -65,6 +69,5 @@ int main()
   reactor_tcp_init(&tcp, event, &tcp);
   reactor_tcp_listen(&tcp, NULL, "80");
   assert(reactor_core_run() == 0);
-
   reactor_core_close();
 }

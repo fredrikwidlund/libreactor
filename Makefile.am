@@ -42,23 +42,15 @@ maintainer-clean-local:; rm -rf autotools m4 libreactor_core-?.?.?
 ## examples ###
 
 bin_PROGRAMS = \
-example/tcpserver1 \
-example/tcpserver2 \
-example/tcpserver3 \
 example/tcpclient1 \
-example/httpserver2 \
-example/restserver
-#example/httpserver1
-#example/http_client
+example/tcp_server \
+example/http_server \
+example/rest_server
 
-example_tcpserver1_LDADD = -L. -lreactor_core -ldynamic
-example_tcpserver2_LDADD = -L. -lreactor_core -ldynamic
-example_tcpserver3_LDADD = -L. -lreactor_core -ldynamic
 example_tcpclient1_LDADD = -L. -lreactor_core -ldynamic
-#example_httpserver1_LDADD = -L. -lreactor_core -ldynamic
-example_httpserver2_LDADD = -L. -lreactor_core -ldynamic
-#example_http_client_LDADD = -L. -lreactor_core -ldynamic
-example_restserver_LDADD = -L. -lreactor_core -ldynamic
+example_tcp_server_LDADD = -L. -lreactor_core -ldynamic
+example_http_server_LDADD = -L. -lreactor_core -ldynamic
+example_rest_server_LDADD = -L. -lreactor_core -ldynamic
 
 ### unit tests ###
 
