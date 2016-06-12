@@ -154,7 +154,10 @@ void reactor_stream_read(reactor_stream *stream)
   ssize_t n;
 
   n = reactor_desc_read(&stream->desc, buffer, sizeof buffer);
-  if (n == -1 && errno != EAGAIN)
+  if (n == -1 && errno == EAGAIN)
+    return;
+
+  if (n == -1)
     {
       reactor_stream_error(stream);
       return;
@@ -166,15 +169,22 @@ void reactor_stream_read(reactor_stream *stream)
       return;
     }
 
-  if (n > 0)
+  reactor_stream_hold(stream);
+  if (buffer_size(&stream->input) == 0)
     {
-      reactor_stream_hold(stream);
       data = (reactor_stream_data) {.base = buffer, .size = n};
       reactor_user_dispatch(&stream->user, REACTOR_STREAM_READ, &data);
       if (stream->state == REACTOR_STREAM_OPEN && data.size)
         buffer_insert(&stream->input, buffer_size(&stream->input), data.base, data.size);
-      reactor_stream_release(stream);
     }
+ else
+   {
+     buffer_insert(&stream->input, buffer_size(&stream->input), buffer, n);
+     data = (reactor_stream_data) {.base = buffer_data(&stream->input), .size = buffer_size(&stream->input)};
+     reactor_user_dispatch(&stream->user, REACTOR_STREAM_READ, &data);
+     buffer_erase(&stream->input, 0, buffer_size(&stream->input) - data.size);
+   }
+  reactor_stream_release(stream);
 }
 
 void reactor_stream_write(reactor_stream *stream, void *base, size_t size)
