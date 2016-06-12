@@ -61,13 +61,13 @@ struct reactor_rest_map
 };
 
 void reactor_rest_init(reactor_rest *, reactor_user_callback *, void *);
-void reactor_rest_server(reactor_rest *, char *, char *, int);
+void reactor_rest_open(reactor_rest *, char *, char *, int);
 void reactor_rest_error(reactor_rest *);
 void reactor_rest_close(reactor_rest *);
 void reactor_rest_event(void *, int, void *);
 void reactor_rest_add_match(reactor_rest *, char *, char *, reactor_rest_handler *, void *);
 void reactor_rest_add_regex(reactor_rest *, char *, char *, reactor_rest_handler *, void *);
-void reactor_rest_respond(reactor_rest_request *, int, size_t, reactor_http_field *, size_t, void *);
+void reactor_rest_respond(reactor_rest_request *, int, size_t, reactor_http_header *, size_t, void *);
 /*
 int  reactor_rest_match(char *, const char *, size_t);
 void reactor_rest_respond_fields(reactor_rest_request *, unsigned, char *, char *, size_t, reactor_http_field *, size_t);

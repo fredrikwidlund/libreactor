@@ -45,7 +45,7 @@ int main()
 
   reactor_core_open();
   reactor_http_init(&http, http_event, &http);
-  reactor_http_server(&http, "localhost", "80");
+  reactor_http_open(&http, "localhost", "80", REACTOR_HTTP_SERVER);
   assert(reactor_core_run() == 0);
 
   reactor_core_close();

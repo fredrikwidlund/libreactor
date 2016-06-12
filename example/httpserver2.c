@@ -18,21 +18,17 @@ void http_event(void *state, int type, void *data)
 {
   reactor_http *http = state;
   reactor_http_session *session = data;
-  reactor_http_message response;
 
   switch (type)
     {
-    case REACTOR_HTTP_REQUEST:
-      if (strcmp(session->message.header.method, "GET") == 0 &&
-          strcmp(session->message.header.path, "/") == 0)
-        reactor_http_message_init_response(&response, 1, 200, "OK",
-                                           1, (reactor_http_field[]) {{"Content-Type", "text/plain"}},
-                                           4, (void *) "test");
-      else
-        reactor_http_message_init_response(&response, 1, 404, "Not Found",
-                                           0, NULL,
-                                           0, NULL);
-      reactor_http_session_respond(session, &response);
+    case REACTOR_HTTP_MESSAGE:
+      if (strcmp(session->message.method, "GET") == 0 &&
+          strcmp(session->message.path, "/") == 0)
+        reactor_http_session_respond(session, (reactor_http_message[]) {{
+              .version = 1, .status = 200, .reason = "OK",
+              .header_size = 1, .header = (reactor_http_header[]) {{"Content-Type", "text/plain"}},
+              .body_size = 4, .body = "test"
+            }});
       break;
     case REACTOR_HTTP_ERROR:
       reactor_http_close(http);
@@ -46,7 +42,7 @@ int main()
 
   reactor_core_open();
   reactor_http_init(&http, http_event, &http);
-  reactor_http_server(&http, "localhost", "80");
+  reactor_http_open(&http, "localhost", "80", REACTOR_HTTP_SERVER);
   assert(reactor_core_run() == 0);
 
   reactor_core_close();

@@ -86,7 +86,7 @@ void reactor_rest_init(reactor_rest *rest, reactor_user_callback *callback, void
   vector_release(&rest->maps, reactor_rest_map_release);
 }
 
-void reactor_rest_server(reactor_rest *rest, char *node, char *service, int flags)
+void reactor_rest_open(reactor_rest *rest, char *node, char *service, int flags)
 {
   if (rest->state != REACTOR_REST_CLOSED)
     {
@@ -99,7 +99,7 @@ void reactor_rest_server(reactor_rest *rest, char *node, char *service, int flag
     reactor_rest_add_match(rest, "OPTIONS", NULL, reactor_rest_cors, NULL);
 
   rest->state = REACTOR_REST_OPEN;
-  reactor_http_server(&rest->http, node, service);
+  reactor_http_open(&rest->http, node, service, REACTOR_HTTP_SERVER);
 }
 
 void reactor_rest_error(reactor_rest *rest)
@@ -122,6 +122,7 @@ void reactor_rest_event(void *state, int type, void *data)
 {
   reactor_rest *rest = state;
   reactor_http_session *session = data;
+  reactor_http_message *message = &session->message;
   reactor_rest_request request = {.rest = rest, .session = session};
   reactor_rest_map *map;
   size_t i, nmatch = 32;
@@ -130,22 +131,22 @@ void reactor_rest_event(void *state, int type, void *data)
 
   switch (type)
     {
-    case REACTOR_HTTP_REQUEST:
+    case REACTOR_HTTP_MESSAGE:
       for (i = 0; i < vector_size(&rest->maps); i ++)
         {
           map = vector_at(&rest->maps, i);
-          if (!map->method || strcmp(map->method, session->message.header.method) == 0)
+          if (!map->method || strcmp(map->method, message->method) == 0)
             switch (map->type)
               {
               case REACTOR_REST_MAP_MATCH:
-                if (!map->path || strcmp(map->path, session->message.header.path) == 0)
+                if (!map->path || strcmp(map->path, message->path) == 0)
                   {
                     map->handler(map->state, &request);
                     return;
                   }
                 break;
               case REACTOR_REST_MAP_REGEX:
-                e = regexec(map->regex, session->message.header.path, 32, match, 0);
+                e = regexec(map->regex, message->path, 32, match, 0);
                 if (e == 0)
                   {
                     request.match = match;
@@ -164,7 +165,7 @@ void reactor_rest_event(void *state, int type, void *data)
       reactor_rest_dispatch(rest, REACTOR_REST_SHUTDOWN, NULL);
       break;
     case REACTOR_HTTP_CLOSE:
-      reactor_rest_close(rest);
+      reactor_rest_close_final(rest);
       break;
     }
 }
@@ -218,13 +219,18 @@ void reactor_rest_add_regex(reactor_rest *rest, char *method, char *regex, react
   vector_push_back(&rest->maps, &map);
 }
 
-void reactor_rest_respond(reactor_rest_request *request, int status, size_t fields_size, reactor_http_field *fields,
+void reactor_rest_respond(reactor_rest_request *request, int status, size_t header_size, reactor_http_header *header,
                           size_t body_size, void *body)
 {
-  reactor_http_message response;
-
-  reactor_http_message_init_response(&response, 1, status, "OK", fields_size, fields, body_size, body);
-  reactor_http_session_respond(request->session, &response);
+  reactor_http_session_respond(request->session, (reactor_http_message[]) {{
+          .version = 1,
+          .status = status,
+          .reason = "OK",
+          .header_size = header_size,
+          .header = header,
+          .body_size = body_size,
+          .body = body
+          }});
 }
 
 /*
