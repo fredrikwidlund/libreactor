@@ -42,13 +42,15 @@ example/tcpserver1 \
 example/tcpserver2 \
 example/tcpserver3 \
 example/tcpclient1 \
-example/httpserver1
+example/httpserver1 \
+example/httpserver2
 
 example_tcpserver1_LDADD = -L. -lreactor_core -ldynamic
 example_tcpserver2_LDADD = -L. -lreactor_core -ldynamic
 example_tcpserver3_LDADD = -L. -lreactor_core -ldynamic
 example_tcpclient1_LDADD = -L. -lreactor_core -ldynamic
 example_httpserver1_LDADD = -L. -lreactor_core -ldynamic
+example_httpserver2_LDADD = -L. -lreactor_core -ldynamic
 
 ### unit tests ###
 
