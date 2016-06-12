@@ -16,8 +16,10 @@ void hello_world(void *state, reactor_rest_request *request)
 
 void quit(void *state, reactor_rest_request *request)
 {
-  (void) request;
-  reactor_rest_close(state);
+  reactor_rest *rest = state;
+
+  reactor_rest_respond_text(request, "shutting down");
+  reactor_rest_close(rest);
 }
 
 int main()

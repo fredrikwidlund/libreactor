@@ -16,22 +16,17 @@
 
 void http_event(void *state, int type, void *data)
 {
-  reactor_http *http = state;
   reactor_http_session *session = data;
 
+  (void) state;
   switch (type)
     {
     case REACTOR_HTTP_MESSAGE:
-      if (strcmp(session->message.method, "GET") == 0 &&
-          strcmp(session->message.path, "/") == 0)
-        reactor_http_session_message(session, (reactor_http_message[]) {{
-              .version = 1, .status = 200, .reason = "OK",
-              .header_size = 1, .header = (reactor_http_header[]) {{"Content-Type", "text/plain"}},
-              .body_size = 4, .body = "test"
-            }});
-      break;
-    case REACTOR_HTTP_ERROR:
-      reactor_http_close(http);
+      reactor_http_session_message(session, (reactor_http_message[]) {{
+            .type = REACTOR_HTTP_MESSAGE_RESPONSE, .version = 1, .status = 200, .reason = "OK",
+            .header_size = 1, .header = (reactor_http_header[]) {{"Content-Type", "text/plain"}},
+            .body_size = 4, .body = "test"
+          }});
       break;
     }
 }
@@ -44,6 +39,5 @@ int main()
   reactor_http_init(&http, http_event, &http);
   reactor_http_open(&http, "localhost", "80", REACTOR_HTTP_SERVER);
   assert(reactor_core_run() == 0);
-
   reactor_core_close();
 }
