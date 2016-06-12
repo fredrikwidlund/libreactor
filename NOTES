@@ -1,7 +1,7 @@
 Close rules
 -----------
 
-* Event input should use "current pointers" in sensitive regions
+* Use ref counters instead of current pointers
 * Close should not return errors
 * Errors should not close
 * Shutdown events should be propagated up and not acted on except by object owner
