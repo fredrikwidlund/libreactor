@@ -144,11 +144,12 @@ void reactor_http_session_close(reactor_http_session *session)
 void reactor_http_session_event(void *state, int type, void *data)
 {
   reactor_http_session *session = state;
+  reactor_stream_data *read = data;
 
   switch (type)
     {
     case REACTOR_STREAM_READ:
-      reactor_http_session_read(session, (reactor_stream_data *) data);
+      reactor_http_session_read(session, read);
       break;
     case REACTOR_STREAM_SHUTDOWN:
       reactor_http_session_close(session);
@@ -185,6 +186,7 @@ void reactor_http_session_read(reactor_http_session *session, reactor_stream_dat
       reactor_user_dispatch(&session->http->user, REACTOR_HTTP_REQUEST, session);
       if (session->state == REACTOR_HTTP_SESSION_CLOSE_WAIT)
         break;
+      session->state = REACTOR_HTTP_SESSION_HEADER;
     }
   reactor_http_session_release(session);
 }
