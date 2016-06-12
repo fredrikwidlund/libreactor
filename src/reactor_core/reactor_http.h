@@ -54,7 +54,7 @@ struct reactor_http_header
     };
   };
   size_t                fields_size;
-  reactor_http_field    fields[REACTOR_HTTP_MAX_FIELDS];
+  reactor_http_field   *fields; //[REACTOR_HTTP_MAX_FIELDS];
 };
 
 enum reactor_http_message_flags
@@ -87,6 +87,7 @@ struct reactor_http_session
   int                   state;
   int                   ref;
   reactor_http_message  message;
+  reactor_http_field    fields_storage[REACTOR_HTTP_MAX_FIELDS];
   reactor_stream        stream;
   reactor_http         *http;
 };
@@ -96,6 +97,8 @@ void reactor_http_server(reactor_http *, char *, char *);
 void reactor_http_error(reactor_http *);
 void reactor_http_close(reactor_http *);
 void reactor_http_tcp_event(void *, int, void *);
+void reactor_http_message_init_response(reactor_http_message *, int, int, char *, size_t, reactor_http_field *,
+                                        size_t, void *);
 void reactor_http_session_init(reactor_http_session *, reactor_http *);
 void reactor_http_session_error(reactor_http_session *);
 void reactor_http_session_close(reactor_http_session *);
@@ -103,5 +106,6 @@ void reactor_http_session_event(void *, int, void *);
 void reactor_http_session_read(reactor_http_session *, reactor_stream_data *);
 void reactor_http_session_read_header(reactor_http_session *, reactor_stream_data *);
 void reactor_http_session_read_body(reactor_http_session *, reactor_stream_data *);
+void reactor_http_session_respond(reactor_http_session *, reactor_http_message *);
 
 #endif /* REACTOR_HTTP_H_INCLUDED */

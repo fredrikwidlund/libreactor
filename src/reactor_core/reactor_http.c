@@ -99,6 +99,41 @@ void reactor_http_tcp_event(void *state, int type, void *data)
     }
 }
 
+
+static inline void reactor_http_message_update_pointer(char **pointer, off_t offset)
+{
+  *pointer += offset;
+}
+
+static inline void reactor_http_message_update_request(reactor_http_message *message, off_t offset)
+{
+  size_t i;
+
+  reactor_http_message_update_pointer((char **) &message->base, offset);
+  reactor_http_message_update_pointer((char **) &message->body, offset);
+  reactor_http_message_update_pointer(&message->header.method, offset);
+  reactor_http_message_update_pointer(&message->header.path, offset);
+  for (i = 0; i < message->header.fields_size; i ++)
+    {
+      reactor_http_message_update_pointer(&message->header.fields[i].name, offset);
+      reactor_http_message_update_pointer(&message->header.fields[i].value, offset);
+    }
+}
+
+void reactor_http_message_init_response(reactor_http_message *response, int version, int status, char *message,
+                                        size_t fields_size, reactor_http_field *fields, size_t body_size, void *body)
+{
+  *response = (reactor_http_message) {
+    .header.version = version,
+    .header.status = status,
+    .header.message = message,
+    .header.fields_size = fields_size,
+    .header.fields = fields,
+    .body_size = body_size,
+    .body = body
+  };
+}
+
 static inline void reactor_http_session_close_final(reactor_http_session *session)
 {
   reactor_http *http;
@@ -159,26 +194,6 @@ void reactor_http_session_event(void *state, int type, void *data)
     }
 }
 
-static inline void reactor_http_session_update_pointer(char **pointer, off_t offset)
-{
-  *pointer += offset;
-}
-
-static inline void reactor_http_session_update_request(reactor_http_message *message, off_t offset)
-{
-  size_t i;
-
-  reactor_http_session_update_pointer((char **) &message->base, offset);
-  reactor_http_session_update_pointer((char **) &message->body, offset);
-  reactor_http_session_update_pointer(&message->header.method, offset);
-  reactor_http_session_update_pointer(&message->header.path, offset);
-  for (i = 0; i < message->header.fields_size; i ++)
-    {
-      reactor_http_session_update_pointer(&message->header.fields[i].name, offset);
-      reactor_http_session_update_pointer(&message->header.fields[i].value, offset);
-    }
-}
-
 void reactor_http_session_read(reactor_http_session *session, reactor_stream_data *data)
 {
   size_t size;
@@ -201,7 +216,7 @@ void reactor_http_session_read(reactor_http_session *session, reactor_stream_dat
         break;
 
       if (session->message.base != data->base)
-        reactor_http_session_update_request(&session->message, (char *) data->base - (char *) session->message.base);
+        reactor_http_message_update_request(&session->message, (char *) data->base - (char *) session->message.base);
       reactor_user_dispatch(&session->http->user, REACTOR_HTTP_REQUEST, session);
       if (session->state == REACTOR_HTTP_SESSION_CLOSE_WAIT)
         break;
@@ -234,6 +249,7 @@ void reactor_http_session_read_header(reactor_http_session *session, reactor_str
       session->message.body_size = 0;
       header->method[method_size] = 0;
       header->path[path_size] = 0;
+      header->fields = session->fields_storage;
       for (i = 0; i < header->fields_size; i ++)
         {
           header->fields[i].name = (char *) fields[i].name;
@@ -245,4 +261,28 @@ void reactor_http_session_read_header(reactor_http_session *session, reactor_str
         }
       session->state = REACTOR_HTTP_SESSION_BODY;
     }
+}
+
+void reactor_http_session_respond(reactor_http_session *session, reactor_http_message *message)
+{
+  reactor_stream *stream = &session->stream;
+  size_t i;
+
+  reactor_stream_write_string(stream, message->header.version ? "HTTP/1.1 " : "HTTP/1.0 ");
+  reactor_stream_write_unsigned(stream, message->header.status);
+  reactor_stream_write_string(stream, " ");
+  reactor_stream_write_string(stream, message->header.message);
+  reactor_stream_write_string(stream, "\r\n");
+  reactor_stream_write_string(stream, "Content-Length: ");
+  reactor_stream_write_unsigned(stream, message->body_size);
+  reactor_stream_write_string(stream, "\r\n");
+  for (i = 0; i < message->header.fields_size; i ++)
+    {
+      reactor_stream_write_string(stream, message->header.fields[i].name);
+      reactor_stream_write_string(stream, ": ");
+      reactor_stream_write_string(stream, message->header.fields[i].value);
+      reactor_stream_write_string(stream, "\r\n");
+    }
+  reactor_stream_write_string(stream, "\r\n");
+  reactor_stream_write(stream, message->body, message->body_size);
 }
