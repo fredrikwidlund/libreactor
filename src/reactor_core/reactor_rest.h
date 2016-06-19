@@ -36,6 +36,8 @@ struct reactor_rest
   int                   ref;
   reactor_http          http;
   reactor_user          user;
+  reactor_timer         timer;
+  char                  date[32];
   vector                maps;
 };
 
@@ -64,19 +66,14 @@ void reactor_rest_init(reactor_rest *, reactor_user_callback *, void *);
 void reactor_rest_open(reactor_rest *, char *, char *, int);
 void reactor_rest_error(reactor_rest *);
 void reactor_rest_close(reactor_rest *);
-void reactor_rest_event(void *, int, void *);
+void reactor_rest_http_event(void *, int, void *);
+void reactor_rest_timer_event(void *, int, void *);
+void reactor_rest_timer_update(reactor_rest *);
 void reactor_rest_add_match(reactor_rest *, char *, char *, reactor_rest_handler *, void *);
 void reactor_rest_add_regex(reactor_rest *, char *, char *, reactor_rest_handler *, void *);
-void reactor_rest_respond(reactor_rest_request *, int, size_t, reactor_http_header *, size_t, void *);
-void reactor_rest_text(reactor_rest_request *, char *);
-
-/*
-int  reactor_rest_match(char *, const char *, size_t);
-void reactor_rest_respond_fields(reactor_rest_request *, unsigned, char *, char *, size_t, reactor_http_field *, size_t);
-void reactor_rest_respond(reactor_rest_request *, unsigned, char *, char *, size_t);
-void reactor_rest_respond_empty(reactor_rest_request *, unsigned);
-void reactor_rest_respond_found(reactor_rest_request *, char *);
-void reactor_rest_respond_clo(reactor_rest_request *, unsigned, clo *);
-*/
+void reactor_rest_respond_empty(reactor_rest_request *, int, char *);
+void reactor_rest_respond_body(reactor_rest_request *, int, char *, char *, size_t, void *);
+void reactor_rest_respond_not_found(reactor_rest_request *);
+void reactor_rest_respond_text(reactor_rest_request *, char *);
 
 #endif /* REACTOR_REST_H_INCLUDED */

@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 #include <signal.h>
 #include <netdb.h>
 #include <assert.h>
@@ -20,6 +21,7 @@
 #include "reactor_stream.h"
 #include "reactor_tcp.h"
 #include "reactor_http.h"
+#include "reactor_timer.h"
 #include "reactor_rest.h"
 
 static inline void reactor_rest_dispatch(reactor_rest *rest, int type, void *state)
@@ -81,7 +83,8 @@ void reactor_rest_init(reactor_rest *rest, reactor_user_callback *callback, void
 {
   *rest = (reactor_rest) {.state = REACTOR_REST_CLOSED};
   reactor_user_init(&rest->user, callback, state);
-  reactor_http_init(&rest->http, reactor_rest_event, rest);
+  reactor_http_init(&rest->http, reactor_rest_http_event, rest);
+  reactor_timer_init(&rest->timer, reactor_rest_timer_event, rest);
   vector_init(&rest->maps, sizeof(reactor_rest_map));
   vector_release(&rest->maps, reactor_rest_map_release);
 }
@@ -100,6 +103,8 @@ void reactor_rest_open(reactor_rest *rest, char *node, char *service, int flags)
 
   rest->state = REACTOR_REST_OPEN;
   reactor_http_open(&rest->http, node, service, REACTOR_HTTP_SERVER);
+  reactor_rest_timer_update(rest);
+  reactor_timer_open(&rest->timer, 1000000000, 1000000000);
 }
 
 void reactor_rest_error(reactor_rest *rest)
@@ -114,11 +119,12 @@ void reactor_rest_close(reactor_rest *rest)
     return;
 
   reactor_http_close(&rest->http);
+  reactor_timer_close(&rest->timer);
   rest->state = REACTOR_REST_CLOSE_WAIT;
   reactor_rest_close_final(rest);
 }
 
-void reactor_rest_event(void *state, int type, void *data)
+void reactor_rest_http_event(void *state, int type, void *data)
 {
   reactor_rest *rest = state;
   reactor_http_session *session = data;
@@ -156,7 +162,7 @@ void reactor_rest_event(void *state, int type, void *data)
                 break;
               }
         }
-      reactor_rest_respond(&request, 404, 0, NULL, 0, NULL);
+      reactor_rest_respond_not_found(&request);
       break;
     case REACTOR_HTTP_ERROR:
       reactor_rest_error(rest);
@@ -168,6 +174,38 @@ void reactor_rest_event(void *state, int type, void *data)
       reactor_rest_close_final(rest);
       break;
     }
+}
+
+void reactor_rest_timer_event(void *state, int type, void *data)
+{
+  reactor_rest *rest = state;
+
+  (void) data;
+  switch (type)
+    {
+    case REACTOR_TIMER_SIGNAL:
+      reactor_rest_timer_update(rest);
+      break;
+    case REACTOR_TIMER_ERROR:
+      reactor_rest_error(rest);
+    case REACTOR_TIMER_CLOSE:
+      reactor_rest_close_final(rest);
+      break;
+    }
+}
+
+void reactor_rest_timer_update(reactor_rest *rest)
+{
+  static const char *days[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+  static const char *months[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+  time_t t;
+  struct tm tm;
+
+  (void) time(&t);
+  (void) gmtime_r(&t, &tm);
+  (void) strftime(rest->date, sizeof rest->date, "---, %d --- %Y %H:%M:%S GMT", &tm);
+  memcpy(rest->date, days[tm.tm_wday], 3);
+  memcpy(rest->date + 8, months[tm.tm_mon], 3);
 }
 
 void reactor_rest_add_match(reactor_rest *rest, char *method, char *path, reactor_rest_handler *handler, void *state)
@@ -219,32 +257,37 @@ void reactor_rest_add_regex(reactor_rest *rest, char *method, char *regex, react
   vector_push_back(&rest->maps, &map);
 }
 
-void reactor_rest_respond(reactor_rest_request *request, int status, size_t header_size, reactor_http_header *header,
-                          size_t body_size, void *body)
+void reactor_rest_respond_empty(reactor_rest_request *request, int status, char *reason)
 {
-  reactor_http_session_message(request->session, (reactor_http_message[]) {{
-          .type = REACTOR_HTTP_MESSAGE_RESPONSE,
-          .version = 1,
-          .status = status,
-          .reason = "OK",
-          .header_size = header_size,
-          .header = header,
-          .body_size = body_size,
-          .body = body
-          }});
+  reactor_http_message message = {
+    .type = REACTOR_HTTP_MESSAGE_RESPONSE, .version = 1, .status = status, .reason = reason,
+    .header_size = 1, .header = (reactor_http_header[]) {{"Date", request->rest->date}},
+    .body_size = 0, .body = NULL
+  };
+  reactor_http_session_message(request->session, &message);
 }
 
-void reactor_rest_text(reactor_rest_request *request, char *text)
+void reactor_rest_respond_body(reactor_rest_request *request, int status, char *reason, char *content_type, size_t body_size, void *body)
 {
-  reactor_http_session_message(request->session, (reactor_http_message[]) {reactor_http_message_text(text)});
+  reactor_http_message message = {
+    .type = REACTOR_HTTP_MESSAGE_RESPONSE, .version = 1, .status = status, .reason = reason,
+    .header_size = 2, .header = (reactor_http_header[]) {{"Date", request->rest->date}, {"Content-Type", content_type}},
+    .body_size = body_size, .body = body
+  };
+  reactor_http_session_message(request->session, &message);
+}
+
+void reactor_rest_respond_text(reactor_rest_request *request, char *text)
+{
+  reactor_rest_respond_body(request, 200, "OK", "text/plain", strlen(text), text);
+}
+
+void reactor_rest_respond_not_found(reactor_rest_request *request)
+{
+  reactor_rest_respond_empty(request, 404, "Not Found");
 }
 
 /*
-void reactor_rest_respond_empty(reactor_rest_request *request, unsigned status)
-{
-  reactor_rest_respond(request, status, NULL, NULL, 0);
-}
-
 void reactor_rest_respond_fields(reactor_rest_request *request, unsigned status,
                                  char *content_type, char *content, size_t content_size,
                                  reactor_http_field *fields, size_t nfields)
@@ -272,13 +315,6 @@ void reactor_rest_respond_fields(reactor_rest_request *request, unsigned status,
     }
 }
 
-
-
-void reactor_rest_respond_found(reactor_rest_request *request, char *location)
-{
-  reactor_rest_respond_fields(request, 302, NULL, NULL, 0, (reactor_http_field[]){{.key = "Location", .value = location}}, 1);
-}
-
 void reactor_rest_respond_clo(reactor_rest_request *request, unsigned status, clo *clo)
 {
   buffer b;
@@ -293,5 +329,4 @@ void reactor_rest_respond_clo(reactor_rest_request *request, unsigned status, cl
     reactor_rest_respond_empty(request, 500);
   buffer_clear(&b);
 }
-
 */
