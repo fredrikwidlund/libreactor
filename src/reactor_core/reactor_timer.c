@@ -49,6 +49,7 @@ void reactor_timer_open(reactor_timer *timer, uint64_t initial, uint64_t interva
       reactor_timer_error(timer);
       return;
     }
+  timer->state = REACTOR_TIMER_OPEN;
 
   fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
   if (fd == -1)
@@ -57,7 +58,6 @@ void reactor_timer_open(reactor_timer *timer, uint64_t initial, uint64_t interva
       return;
     }
 
-  timer->state = REACTOR_TIMER_OPEN;
   reactor_timer_hold(timer);
   reactor_desc_open(&timer->desc, fd, REACTOR_DESC_FLAGS_READ);
   if (timer->state == REACTOR_TIMER_OPEN)

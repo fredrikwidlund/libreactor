@@ -13,6 +13,7 @@ extern "C" {
 #include "reactor_core/reactor_user.h"
 #include "reactor_core/reactor_desc.h"
 #include "reactor_core/reactor_core.h"
+#include "reactor_core/reactor_event.h"
 #include "reactor_core/reactor_timer.h"
 #include "reactor_core/reactor_stream.h"
 #include "reactor_core/reactor_tcp.h"

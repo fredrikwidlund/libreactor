@@ -6,6 +6,7 @@ SOURCE_FILES = \
 src/reactor_core/reactor_user.c \
 src/reactor_core/reactor_desc.c \
 src/reactor_core/reactor_core.c \
+src/reactor_core/reactor_event.c \
 src/reactor_core/reactor_timer.c \
 src/reactor_core/reactor_stream.c \
 src/reactor_core/reactor_tcp.c \
@@ -17,6 +18,7 @@ HEADER_FILES = \
 src/reactor_core/reactor_user.h \
 src/reactor_core/reactor_desc.h \
 src/reactor_core/reactor_core.h \
+src/reactor_core/reactor_event.h \
 src/reactor_core/reactor_timer.h \
 src/reactor_core/reactor_stream.h \
 src/reactor_core/reactor_tcp.h \
