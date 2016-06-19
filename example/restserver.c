@@ -11,7 +11,7 @@
 void hello_world(void *state, reactor_rest_request *request)
 {
   (void) state;
-  reactor_rest_text(request, "hello world");
+  reactor_rest_respond_text(request, "hello world");
 }
 
 void quit(void *state, reactor_rest_request *request)

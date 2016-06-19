@@ -112,21 +112,6 @@ void reactor_http_event(void *state, int type, void *data)
     }
 }
 
-reactor_http_message reactor_http_message_text(char *text)
-{
-  return (reactor_http_message)
-    {
-      .type = REACTOR_HTTP_MESSAGE_RESPONSE,
-      .version = 1,
-      .status = 200,
-      .reason = "OK",
-      .header_size = 1,
-      .header = (reactor_http_header[]){{"Content-Type", "text/plain"}},
-      .body_size = strlen(text),
-      .body = text
-    };
-}
-
 static inline void reactor_http_session_close_final(reactor_http_session *session)
 {
   reactor_http *http;
@@ -173,7 +158,6 @@ static inline void reactor_http_session_update(reactor_http_session *session, of
     {
       reactor_http_session_update_reference(&message->reason, offset);
     }
-
   for (i = 0; i < message->header_size; i ++)
     {
       reactor_http_session_update_reference(&message->header[i].name, offset);
