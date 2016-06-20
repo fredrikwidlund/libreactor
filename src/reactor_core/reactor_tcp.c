@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <errno.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <netdb.h>
 #include <sys/socket.h>
 #include <netinet/tcp.h>
@@ -91,6 +92,14 @@ void reactor_tcp_connect(reactor_tcp *tcp, char *node, char *service)
       freeaddrinfo(ai);
       reactor_tcp_error(tcp);
       return;
+    }
+
+  e = fcntl(s, F_SETFL, O_NONBLOCK);
+  if (e == -1)
+    {
+      (void) close(s);
+      freeaddrinfo(ai);
+      reactor_tcp_error(tcp);
     }
 
   e = connect(s, ai->ai_addr, ai->ai_addrlen);
