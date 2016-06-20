@@ -37,7 +37,7 @@ void reactor_desc_init(reactor_desc *desc, reactor_user_callback *callback, void
   reactor_user_init(&desc->user, callback, state);
 }
 
-void reactor_desc_open(reactor_desc *desc, int fd)
+void reactor_desc_open(reactor_desc *desc, int fd, int flags)
 {
   int e;
 
@@ -47,8 +47,8 @@ void reactor_desc_open(reactor_desc *desc, int fd)
       reactor_desc_error(desc);
       return;
     }
-
-  e = reactor_core_desc_add(desc, fd, REACTOR_DESC_READ);
+  desc->state = REACTOR_DESC_OPEN;
+  e = reactor_core_desc_add(desc, fd, 0);
   if (e == -1)
     {
       (void) close(fd);
@@ -57,7 +57,21 @@ void reactor_desc_open(reactor_desc *desc, int fd)
       return;
     }
 
-  desc->state = REACTOR_DESC_OPEN;
+  reactor_desc_set(desc, flags);
+}
+
+void reactor_desc_set(reactor_desc *desc, int flags)
+{
+  reactor_core_desc_set(desc,
+                        (flags & REACTOR_DESC_FLAGS_READ ? POLLIN : 0) |
+                        (flags & REACTOR_DESC_FLAGS_WRITE ? POLLOUT : 0));
+}
+
+void reactor_desc_clear(reactor_desc *desc, int flags)
+{
+  reactor_core_desc_clear(desc,
+                        (flags & REACTOR_DESC_FLAGS_READ ? POLLIN : 0) |
+                        (flags & REACTOR_DESC_FLAGS_WRITE ? POLLOUT : 0));
 }
 
 void reactor_desc_close(reactor_desc *desc)
@@ -114,23 +128,7 @@ ssize_t reactor_desc_read(reactor_desc *desc, void *data, size_t size)
   return recv(reactor_core_desc_fd(desc), data, size, MSG_DONTWAIT);
 }
 
-void reactor_desc_read_notify(reactor_desc *desc, int flag)
-{
-  if (flag)
-    reactor_core_desc_set(desc, POLLIN);
-  else
-    reactor_core_desc_clear(desc, POLLIN);
-}
-
 ssize_t reactor_desc_write(reactor_desc *desc, void *data, size_t size)
 {
   return send(reactor_core_desc_fd(desc), data, size, MSG_DONTWAIT);
-}
-
-void reactor_desc_write_notify(reactor_desc *desc, int flag)
-{
-  if (flag)
-    reactor_core_desc_set(desc, POLLOUT);
-  else
-    reactor_core_desc_clear(desc, POLLOUT);
 }
