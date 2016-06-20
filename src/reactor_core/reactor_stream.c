@@ -48,10 +48,10 @@ static size_t reactor_stream_desc_write(reactor_stream *stream, void *data, size
       if (n == -1)
         {
           stream->flags |= REACTOR_STREAM_FLAGS_BLOCKED;
+          reactor_desc_set(&stream->desc, REACTOR_DESC_FLAGS_WRITE);
           break;
         }
     }
-  reactor_desc_write_notify(&stream->desc, i != size);
   return i;
 }
 
@@ -74,7 +74,7 @@ void reactor_stream_open(reactor_stream *stream, int fd)
     }
 
   stream->state = REACTOR_STREAM_OPEN;
-  reactor_desc_open(&stream->desc, fd);
+  reactor_desc_open(&stream->desc, fd, REACTOR_DESC_FLAGS_READ);
 }
 
 void reactor_stream_error(reactor_stream *stream)
@@ -92,7 +92,7 @@ void reactor_stream_shutdown(reactor_stream *stream)
   if (stream->state == REACTOR_STREAM_OPEN && buffer_size(&stream->output))
     {
       stream->state = REACTOR_STREAM_LINGER;
-      reactor_desc_read_notify(&stream->desc, 0);
+      reactor_desc_clear(&stream->desc, REACTOR_DESC_FLAGS_READ);
       return;
     }
 
@@ -270,16 +270,21 @@ void reactor_stream_flush(reactor_stream *stream)
   if (stream->state != REACTOR_STREAM_OPEN && stream->state != REACTOR_STREAM_LINGER)
     return;
 
+  if (!buffer_size(&stream->output))
+    return;
+
   n = reactor_stream_desc_write(stream, buffer_data(&stream->output), buffer_size(&stream->output));
   if (n == -1 && errno != EAGAIN)
     {
       reactor_stream_error(stream);
       return;
     }
-
   buffer_erase(&stream->output, 0, n);
+  if (buffer_size(&stream->output))
+    reactor_desc_set(&stream->desc, REACTOR_DESC_FLAGS_WRITE);
   if (stream->state == REACTOR_STREAM_LINGER && buffer_size(&stream->output) == 0)
     reactor_stream_close(stream);
+
 }
 
 void reactor_stream_consume(reactor_stream_data *data, size_t size)

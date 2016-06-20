@@ -64,7 +64,7 @@ int main(int argc, char **argv)
   reactor_core_open();
   reactor_tcp_init(&client.tcp, tcp_event, &client);
   reactor_stream_init(&client.stream, stream_event, &client);
-  reactor_tcp_connect(&client.tcp, client.host, client.service);
+  reactor_tcp_open(&client.tcp, client.host, client.service, 0);
   assert(reactor_core_run() == 0);
   reactor_core_close();
 }

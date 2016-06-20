@@ -59,7 +59,7 @@ void reactor_timer_open(reactor_timer *timer, uint64_t initial, uint64_t interva
 
   timer->state = REACTOR_TIMER_OPEN;
   reactor_timer_hold(timer);
-  reactor_desc_open(&timer->desc, fd);
+  reactor_desc_open(&timer->desc, fd, REACTOR_DESC_FLAGS_READ);
   if (timer->state == REACTOR_TIMER_OPEN)
     reactor_timer_set(timer, initial, interval);
   reactor_timer_release(timer);

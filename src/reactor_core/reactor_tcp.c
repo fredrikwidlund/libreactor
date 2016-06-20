@@ -21,29 +21,6 @@ static void reactor_tcp_close_final(reactor_tcp *tcp)
   reactor_user_dispatch(&tcp->user, REACTOR_TCP_CLOSE, NULL);
 }
 
-static int reactor_tcp_bind(int s, struct sockaddr *sa, socklen_t sa_len)
-{
-  int e;
-
-  e = setsockopt(s, SOL_SOCKET, SO_REUSEPORT, (int[]){1}, sizeof(int));
-  if (e == -1)
-    return -1;
-
-  e = setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (int[]){1}, sizeof(int));
-  if (e == -1)
-    return -1;
-
-  e = bind(s, sa, sa_len);
-  if (e == -1)
-    return -1;
-
-  e = listen(s, -1);
-  if (e == -1)
-    return -1;
-
-  return 0;
-}
-
 void reactor_tcp_init(reactor_tcp *tcp, reactor_user_callback *callback, void *state)
 {
   *tcp = (reactor_tcp) {.state = REACTOR_TCP_CLOSED};
@@ -65,31 +42,54 @@ void reactor_tcp_close(reactor_tcp *tcp)
   reactor_desc_close(&tcp->desc);
 }
 
-void reactor_tcp_connect(reactor_tcp *tcp, char *node, char *service)
+static void reactor_tcp_listen(reactor_tcp *tcp, struct addrinfo *ai, int s)
 {
-  struct addrinfo *ai;
+  int e;
+
+  (void) setsockopt(s, SOL_SOCKET, SO_REUSEPORT, (int[]){1}, sizeof(int));
+  (void) setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (int[]){1}, sizeof(int));
+
+  e = bind(s, ai->ai_addr, ai->ai_addrlen);
+  if (e == -1)
+    {
+      (void) close(s);
+      reactor_tcp_error(tcp);
+      return;
+    }
+
+  e = listen(s, -1);
+  if (e == -1)
+    {
+      (void) close(s);
+      reactor_tcp_error(tcp);
+      return;
+    }
+
+  reactor_desc_open(&tcp->desc, s, REACTOR_DESC_FLAGS_READ);
+}
+
+static void reactor_tcp_connect(reactor_tcp *tcp, struct addrinfo *ai, int s)
+{
+  int e;
+
+  e = connect(s, ai->ai_addr, ai->ai_addrlen);
+  if (e == -1 && errno != EINPROGRESS)
+    {
+      (void) close(s);
+      reactor_tcp_error(tcp);
+      return;
+    }
+
+  reactor_desc_open(&tcp->desc, s, REACTOR_DESC_FLAGS_WRITE);
+}
+
+static void reactor_tcp_socket(reactor_tcp *tcp, struct addrinfo *ai)
+{
   int s, e;
-
-  if (tcp->state != REACTOR_TCP_CLOSED)
-    {
-      reactor_tcp_error(tcp);
-      return;
-    }
-  tcp->state = REACTOR_TCP_OPEN;
-
-  e = getaddrinfo(node, service,
-                  (struct addrinfo[]) {{.ai_family = AF_INET, .ai_socktype = SOCK_STREAM}},
-                  &ai);
-  if (e != 0 || !ai)
-    {
-      reactor_tcp_error(tcp);
-      return;
-    }
 
   s = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
   if (s == -1)
     {
-      freeaddrinfo(ai);
       reactor_tcp_error(tcp);
       return;
     }
@@ -98,61 +98,40 @@ void reactor_tcp_connect(reactor_tcp *tcp, char *node, char *service)
   if (e == -1)
     {
       (void) close(s);
-      freeaddrinfo(ai);
-      reactor_tcp_error(tcp);
-    }
-
-  e = connect(s, ai->ai_addr, ai->ai_addrlen);
-  freeaddrinfo(ai);
-  if (e == -1 && errno != EINPROGRESS)
-    {
-      (void) close(s);
       reactor_tcp_error(tcp);
       return;
     }
 
-  reactor_user_dispatch(&tcp->user, REACTOR_TCP_CONNECT, &s);
+  (tcp->flags & REACTOR_TCP_SERVER ? reactor_tcp_listen : reactor_tcp_connect)(tcp, ai, s);
 }
 
-void reactor_tcp_listen(reactor_tcp *tcp, char *node, char *service)
+static void reactor_tcp_resolve(reactor_tcp *tcp, char *node, char *service)
 {
-  struct addrinfo *ai;
-    int s, e;
+  struct addrinfo *ai, hints = {.ai_family = AF_INET, .ai_socktype = SOCK_STREAM};
+  int e;
 
-  if (tcp->state != REACTOR_TCP_CLOSED)
-    {
-      reactor_tcp_error(tcp);
-      return;
-    }
-  tcp->state = REACTOR_TCP_OPEN;
-
-  e = getaddrinfo(node, service,
-                  (struct addrinfo[]) {{.ai_family = AF_INET, .ai_socktype = SOCK_STREAM, .ai_flags = AI_PASSIVE}},
-                  &ai);
+  hints.ai_flags = tcp->flags & REACTOR_TCP_SERVER ? AI_PASSIVE : 0;
+  e = getaddrinfo(node, service, &hints, &ai);
   if (e != 0 || !ai)
     {
       reactor_tcp_error(tcp);
       return;
     }
 
-  s = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
-  if (s == -1)
-    {
-      freeaddrinfo(ai);
-      reactor_tcp_error(tcp);
-      return;
-    }
-
-  e = reactor_tcp_bind(s, ai->ai_addr, ai->ai_addrlen);
+  reactor_tcp_socket(tcp, ai);
   freeaddrinfo(ai);
-  if (e == -1)
+}
+
+void reactor_tcp_open(reactor_tcp *tcp, char *node, char *service, int flags)
+{
+  if (tcp->state != REACTOR_TCP_CLOSED)
     {
-      (void) close(s);
       reactor_tcp_error(tcp);
       return;
     }
-
-  reactor_desc_open(&tcp->desc, s);
+  tcp->flags = flags;
+  tcp->state = REACTOR_TCP_OPEN;
+  reactor_tcp_resolve(tcp, node, service);
 }
 
 void reactor_tcp_event(void *state, int type, void *data)
@@ -163,6 +142,11 @@ void reactor_tcp_event(void *state, int type, void *data)
   (void) data;
   switch (type)
     {
+    case REACTOR_DESC_WRITE:
+      s = dup(reactor_desc_fd(&tcp->desc));
+      reactor_desc_close(&tcp->desc);
+      reactor_user_dispatch(&tcp->user, REACTOR_TCP_CONNECT, &s);
+      break;
     case REACTOR_DESC_READ:
       s = accept(reactor_desc_fd(&tcp->desc), NULL, NULL);
       if (s == -1)
@@ -173,7 +157,7 @@ void reactor_tcp_event(void *state, int type, void *data)
       reactor_user_dispatch(&tcp->user, REACTOR_TCP_ACCEPT, &s);
       break;
     case REACTOR_DESC_SHUTDOWN:
-      reactor_user_dispatch(&tcp->user, REACTOR_TCP_SHUTDOWN, NULL);
+      reactor_user_dispatch(&tcp->user, REACTOR_TCP_ERROR, NULL);
       break;
     case REACTOR_DESC_CLOSE:
       reactor_tcp_close_final(tcp);

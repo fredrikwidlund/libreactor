@@ -67,7 +67,7 @@ int main()
 
   reactor_core_open();
   reactor_tcp_init(&tcp, event, &tcp);
-  reactor_tcp_listen(&tcp, NULL, "80");
+  reactor_tcp_open(&tcp, NULL, "80", REACTOR_TCP_SERVER);
   assert(reactor_core_run() == 0);
   reactor_core_close();
 }

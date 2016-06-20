@@ -57,7 +57,7 @@ void reactor_http_open(reactor_http *http, char *node, char *service, int flags)
 
   http->flags = flags;
   http->state = REACTOR_HTTP_OPEN;
-  (flags & REACTOR_HTTP_SERVER ? reactor_tcp_listen : reactor_tcp_connect)(&http->tcp, node, service);
+  reactor_tcp_open(&http->tcp, node, service, flags & REACTOR_HTTP_SERVER ? REACTOR_TCP_SERVER : 0);
 }
 
 void reactor_http_error(reactor_http *http)

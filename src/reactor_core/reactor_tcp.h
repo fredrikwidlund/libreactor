@@ -17,19 +17,24 @@ enum reactor_tcp_events
   REACTOR_TCP_CLOSE
 };
 
+enum reactor_tcp_flags
+{
+  REACTOR_TCP_SERVER = 0x01
+};
+
 typedef struct reactor_tcp reactor_tcp;
 struct reactor_tcp
 {
   int          state;
+  int          flags;
   reactor_user user;
   reactor_desc desc;
 };
 
 void reactor_tcp_init(reactor_tcp *, reactor_user_callback *, void *);
+void reactor_tcp_open(reactor_tcp *, char *, char *, int);
 void reactor_tcp_error(reactor_tcp *);
 void reactor_tcp_close(reactor_tcp *);
-void reactor_tcp_connect(reactor_tcp *, char *, char *);
-void reactor_tcp_listen(reactor_tcp *, char *, char *);
 void reactor_tcp_event(void *, int, void *);
 
 /*
