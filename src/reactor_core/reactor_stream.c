@@ -130,10 +130,10 @@ void reactor_stream_event(void *state, int type, void *data)
       break;
     case REACTOR_DESC_WRITE:
       stream->flags &= ~REACTOR_STREAM_FLAGS_BLOCKED;
-      reactor_stream_flush(stream);
+      reactor_user_dispatch(&stream->user, REACTOR_STREAM_WRITE_AVAILABLE, NULL);
       if (stream->state == REACTOR_STREAM_OPEN &&
           (stream->flags & REACTOR_STREAM_FLAGS_BLOCKED) == 0)
-        reactor_user_dispatch(&stream->user, REACTOR_STREAM_WRITE_AVAILABLE, NULL);
+        reactor_stream_flush(stream);
       break;
     case REACTOR_DESC_SHUTDOWN:
       reactor_user_dispatch(&stream->user, REACTOR_STREAM_SHUTDOWN, NULL);
