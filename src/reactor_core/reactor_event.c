@@ -52,7 +52,8 @@ void reactor_event_open(reactor_event *event)
       return;
     }
   event->state = REACTOR_EVENT_OPEN;
-  fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK | EFD_SEMAPHORE);
+  //fd = eventfd(0, EFD_CLOEXEC | EFD_NONBLOCK | EFD_SEMAPHORE);
+  fd = eventfd(0, EFD_CLOEXEC | EFD_SEMAPHORE);
   if (fd == -1)
     {
       reactor_event_error(event);
@@ -94,6 +95,9 @@ void reactor_event_event(void *state, int type, void *data)
       break;
     case REACTOR_DESC_ERROR:
       reactor_event_error(event);
+      break;
+    case REACTOR_DESC_SHUTDOWN:
+      reactor_user_dispatch(&event->user, REACTOR_EVENT_SHUTDOWN, &value);
       break;
     case REACTOR_DESC_CLOSE:
       reactor_event_close_final(event);
