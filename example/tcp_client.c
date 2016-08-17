@@ -7,7 +7,7 @@
 
 #include <dynamic.h>
 
-#include "reactor_core.h"
+#include "reactor.h"
 
 typedef struct client client;
 struct client

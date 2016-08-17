@@ -6,7 +6,7 @@
 
 #include <dynamic.h>
 
-#include "reactor_core.h"
+#include "reactor.h"
 
 void hello_world(void *state, reactor_rest_request *request)
 {

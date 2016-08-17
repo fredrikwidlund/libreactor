@@ -1,4 +1,4 @@
-AC_INIT([libreactor_core], [1.0.0], [fredrik.widlund@gmail.com])
+AC_INIT([libreactor], [0.9.0], [fredrik.widlund@gmail.com])
 AC_CONFIG_AUX_DIR([autotools])
 AC_CONFIG_MACRO_DIR([m4])
 AC_CONFIG_HEADERS([config.h])

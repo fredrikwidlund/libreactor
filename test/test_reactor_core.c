@@ -7,19 +7,17 @@
 #include <cmocka.h>
 #include <dynamic.h>
 
-#include "reactor_core.h"
+#include "reactor.h"
 
 void coverage()
 {
   int e;
 
-  e = reactor_core_construct();
+  e = reactor_core_open();
   assert_int_equal(e, 0);
-
   e = reactor_core_run();
   assert_int_equal(e, 0);
-
-  reactor_core_destruct();
+  reactor_core_close();
 }
 
 int main()

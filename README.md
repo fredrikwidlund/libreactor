@@ -1,5 +1,5 @@
-libreactor_core
-===============
+libreactor
+==========
 
 Extendable event driven high performance C-abstractions
 

@@ -12,7 +12,7 @@
 
 #include <dynamic.h>
 
-#include "reactor_core.h"
+#include "reactor.h"
 
 void http_event(void *state, int type, void *data)
 {

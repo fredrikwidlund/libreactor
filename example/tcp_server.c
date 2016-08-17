@@ -11,7 +11,7 @@
 
 #include <dynamic.h>
 
-#include "reactor_core.h"
+#include "reactor.h"
 
 void client_event(void *state, int type, void *data)
 {

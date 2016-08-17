@@ -12,7 +12,7 @@
 
 #include <dynamic.h>
 
-#include "reactor_core.h"
+#include "reactor.h"
 
 struct app
 {
