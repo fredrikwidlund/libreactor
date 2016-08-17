@@ -8,7 +8,6 @@ src/reactor_core/reactor_desc.c \
 src/reactor_core/reactor_core.c \
 src/reactor_core/reactor_event.c \
 src/reactor_core/reactor_timer.c \
-src/reactor_core/reactor_resolver.c \
 src/reactor_core/reactor_stream.c \
 src/reactor_core/reactor_tcp.c \
 src/picohttpparser/picohttpparser.c \
@@ -21,7 +20,6 @@ src/reactor_core/reactor_desc.h \
 src/reactor_core/reactor_core.h \
 src/reactor_core/reactor_event.h \
 src/reactor_core/reactor_timer.h \
-src/reactor_core/reactor_resolver.h \
 src/reactor_core/reactor_stream.h \
 src/reactor_core/reactor_tcp.h \
 src/reactor_core/reactor_http.h \
@@ -46,14 +44,12 @@ maintainer-clean-local:; rm -rf autotools m4 libreactor_core-?.?.?
 ## examples ###
 
 bin_PROGRAMS = \
-example/resolver \
 example/tcp_client \
 example/tcp_server \
 example/http_client \
 example/http_server \
 example/rest_server
 
-example_resolver_LDADD = -L. -lreactor_core -ldynamic
 example_tcp_client_LDADD = -L. -lreactor_core -ldynamic
 example_tcp_server_LDADD = -L. -lreactor_core -ldynamic
 example_http_client_LDADD = -L. -lreactor_core -ldynamic
