@@ -13,7 +13,6 @@
 #include <sys/socket.h>
 
 #include <dynamic.h>
-#include <clo.h>
 
 #include "reactor_user.h"
 #include "reactor_desc.h"
@@ -56,29 +55,6 @@ static void reactor_rest_map_release(void *data)
     }
 }
 
-static void reactor_rest_cors(void *state, reactor_rest_request *request)
-{
-  //char *cors_origin, *cors_allow_headers;
-
-  (void) state;
-  (void) request;
-  /*
-  cors_origin = reactor_http_field_lookup(&request->request->fields, "Origin");
-  if (!cors_origin)
-    {
-      reactor_rest_respond_empty(request, 404);
-      return;
-    }
-
-  cors_allow_headers = reactor_http_field_lookup(&request->request->fields, "Access-Control-Request-Headers");
-  reactor_rest_respond_fields(request, 204, NULL, NULL, 0, (reactor_http_field[]) {
-      {.key = "Access-Control-Allow-Methods", .value = "GET, OPTIONS"},
-      {.key = "Access-Control-Allow-Headers", .value = cors_allow_headers},
-      {.key = "Access-Control-Max-Age", .value = "1728000"}}, 3);
-  */
-}
-
-
 void reactor_rest_init(reactor_rest *rest, reactor_user_callback *callback, void *state)
 {
   *rest = (reactor_rest) {.state = REACTOR_REST_CLOSED};
@@ -98,9 +74,6 @@ void reactor_rest_open(reactor_rest *rest, char *node, char *service, int flags)
     }
 
   rest->flags = flags;
-  if (flags & REACTOR_REST_ENABLE_CORS)
-    reactor_rest_add_match(rest, "OPTIONS", NULL, reactor_rest_cors, NULL);
-
   rest->state = REACTOR_REST_OPEN;
   reactor_http_open(&rest->http, node, service, REACTOR_HTTP_SERVER);
   reactor_rest_timer_update(rest);
@@ -262,24 +235,22 @@ void reactor_rest_respond_empty(reactor_rest_request *request, int status, char 
   reactor_http_message message = {
     .type = REACTOR_HTTP_MESSAGE_RESPONSE, .version = 1, .status = status, .reason = reason,
     .header_size = 1, .header = (reactor_http_header[]) {{"Date", request->rest->date}},
-    .body_size = 0, .body = NULL
+    .body = NULL, .body_size = 0
   };
   reactor_http_session_message(request->session, &message);
 }
 
-void reactor_rest_respond_body(reactor_rest_request *request, int status, char *reason, char *content_type, size_t body_size, void *body)
+void reactor_rest_respond_body(reactor_rest_request *request, int status, char *reason, char *content_type, void *body, size_t body_size)
 {
   reactor_http_message message = {
     .type = REACTOR_HTTP_MESSAGE_RESPONSE, .version = 1, .status = status, .reason = reason,
-    .header_size = 2, .header = (reactor_http_header[]) {{"Date", request->rest->date}, {"Content-Type", content_type}},
-    .body_size = body_size, .body = body
+    .header_size = 2, .header = (reactor_http_header[]) {
+      {"Server", "libreactor"},
+      {"Date", request->rest->date},
+      {"Content-Type", content_type}},
+    .body = body, .body_size = body_size,
   };
   reactor_http_session_message(request->session, &message);
-}
-
-void reactor_rest_respond_text(reactor_rest_request *request, char *text)
-{
-  reactor_rest_respond_body(request, 200, "OK", "text/plain", strlen(text), text);
 }
 
 void reactor_rest_respond_not_found(reactor_rest_request *request)
@@ -287,46 +258,7 @@ void reactor_rest_respond_not_found(reactor_rest_request *request)
   reactor_rest_respond_empty(request, 404, "Not Found");
 }
 
-/*
-void reactor_rest_respond_fields(reactor_rest_request *request, unsigned status,
-                                 char *content_type, char *content, size_t content_size,
-                                 reactor_http_field *fields, size_t nfields)
+void reactor_rest_respond_text(reactor_rest_request *request, char *text)
 {
-  reactor_http_field cors_fields[nfields + 3];
-  char *cors_origin;
-
-  cors_origin = NULL;
-  if (request->server->flags & REACTOR_REST_ENABLE_CORS)
-    cors_origin = reactor_http_field_lookup(&request->request->fields, "Origin");
-  if (!cors_origin)
-    reactor_http_server_session_respond_fields(request->session, status, content_type, content, content_size,
-                                                 fields, nfields);
-  else
-    {
-      memcpy(cors_fields, fields, nfields * (sizeof *fields));
-      cors_fields[nfields] = (reactor_http_field) {.key = "Access-Control-Allow-Origin", .value = cors_origin};
-      nfields ++;
-      cors_fields[nfields] = (reactor_http_field) {.key = "Access-Control-Allow-Credentials", .value = "true"};
-      nfields ++;
-      cors_fields[nfields] = (reactor_http_field) {.key = "Vary", .value = "Origin"};
-      nfields ++;
-      reactor_http_server_session_respond_fields(request->session, status, content_type, content, content_size,
-                                                 cors_fields, nfields);
-    }
+  reactor_rest_respond_body(request, 200, "OK", "text/plain", text, strlen(text));
 }
-
-void reactor_rest_respond_clo(reactor_rest_request *request, unsigned status, clo *clo)
-{
-  buffer b;
-  int e;
-
-  buffer_init(&b);
-  e = 0;
-  clo_encode(clo, &b, &e);
-  if (e == 0)
-    reactor_rest_respond(request, status, "application/json", buffer_data(&b), buffer_size(&b));
-  else
-    reactor_rest_respond_empty(request, 500);
-  buffer_clear(&b);
-}
-*/

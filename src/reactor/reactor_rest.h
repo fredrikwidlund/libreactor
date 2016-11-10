@@ -72,7 +72,7 @@ void reactor_rest_timer_update(reactor_rest *);
 void reactor_rest_add_match(reactor_rest *, char *, char *, reactor_rest_handler *, void *);
 void reactor_rest_add_regex(reactor_rest *, char *, char *, reactor_rest_handler *, void *);
 void reactor_rest_respond_empty(reactor_rest_request *, int, char *);
-void reactor_rest_respond_body(reactor_rest_request *, int, char *, char *, size_t, void *);
+void reactor_rest_respond_body(reactor_rest_request *, int, char *, char *, void *, size_t);
 void reactor_rest_respond_not_found(reactor_rest_request *);
 void reactor_rest_respond_text(reactor_rest_request *, char *);
 
