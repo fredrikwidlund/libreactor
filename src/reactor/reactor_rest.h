@@ -38,6 +38,7 @@ struct reactor_rest
   reactor_user          user;
   reactor_timer         timer;
   char                  date[32];
+  const char           *name;
   vector                maps;
 };
 
@@ -63,6 +64,7 @@ struct reactor_rest_map
 };
 
 void reactor_rest_init(reactor_rest *, reactor_user_callback *, void *);
+void reactor_rest_name(reactor_rest *, const char *);
 void reactor_rest_open(reactor_rest *, char *, char *, int);
 void reactor_rest_error(reactor_rest *);
 void reactor_rest_close(reactor_rest *);

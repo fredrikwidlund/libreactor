@@ -57,12 +57,17 @@ static void reactor_rest_map_release(void *data)
 
 void reactor_rest_init(reactor_rest *rest, reactor_user_callback *callback, void *state)
 {
-  *rest = (reactor_rest) {.state = REACTOR_REST_CLOSED};
+  *rest = (reactor_rest) {.state = REACTOR_REST_CLOSED, .name = "libreactor"};
   reactor_user_init(&rest->user, callback, state);
   reactor_http_init(&rest->http, reactor_rest_http_event, rest);
   reactor_timer_init(&rest->timer, reactor_rest_timer_event, rest);
   vector_init(&rest->maps, sizeof(reactor_rest_map));
   vector_release(&rest->maps, reactor_rest_map_release);
+}
+
+void reactor_rest_name(reactor_rest *rest, const char *name)
+{
+  rest->name = name;
 }
 
 void reactor_rest_open(reactor_rest *rest, char *node, char *service, int flags)
@@ -234,7 +239,9 @@ void reactor_rest_respond_empty(reactor_rest_request *request, int status, char 
 {
   reactor_http_message message = {
     .type = REACTOR_HTTP_MESSAGE_RESPONSE, .version = 1, .status = status, .reason = reason,
-    .header_size = 1, .header = (reactor_http_header[]) {{"Date", request->rest->date}},
+    .header_size = 2, .header = (reactor_http_header[]) {
+      {"Server", (char *) request->rest->name},
+      {"Date", request->rest->date}},
     .body = NULL, .body_size = 0
   };
   reactor_http_session_message(request->session, &message);
@@ -244,8 +251,8 @@ void reactor_rest_respond_body(reactor_rest_request *request, int status, char *
 {
   reactor_http_message message = {
     .type = REACTOR_HTTP_MESSAGE_RESPONSE, .version = 1, .status = status, .reason = reason,
-    .header_size = 2, .header = (reactor_http_header[]) {
-      {"Server", "libreactor"},
+    .header_size = 3, .header = (reactor_http_header[]) {
+      {"Server", (char *) request->rest->name},
       {"Date", request->rest->date},
       {"Content-Type", content_type}},
     .body = body, .body_size = body_size,

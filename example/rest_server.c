@@ -29,6 +29,7 @@ int main()
 
   reactor_core_open();
   reactor_rest_init(&rest, NULL, NULL);
+  reactor_rest_name(&rest, "test");
   reactor_rest_open(&rest, "localhost", "80", 0);
   reactor_rest_add_match(&rest, "GET", "/", hello_world, NULL);
   reactor_rest_add_match(&rest, "GET", "/quit", quit, &rest);
