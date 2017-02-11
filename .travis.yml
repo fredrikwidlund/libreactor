@@ -1,0 +1,33 @@
+sudo: required
+dist: trusty
+language: c
+compiler:
+  - gcc
+install:
+  - cd ${TRAVIS_BUILD_DIR}
+  - sudo apt-get update -qq
+  - sudo apt-get install -y -qq valgrind
+  - wget https://cmocka.org/files/1.1/cmocka-1.1.0.tar.xz
+  - tar -xvf cmocka-1.1.0.tar.xz
+  - cd cmocka-1.1.0
+  - mkdir build
+  - cd build
+  - cmake -DCMAKE_INSTALL_PREFIX=/usr -DCMAKE_BUILD_TYPE=Release ..
+  - make
+  - sudo make install
+  - cd ${TRAVIS_BUILD_DIR}
+  - wget http://ftp.de.debian.org/debian/pool/main/l/lcov/lcov_1.11.orig.tar.gz
+  - tar xf lcov_1.11.orig.tar.gz
+  - sudo make -C lcov-1.11/ install
+  - gem install coveralls-lcov
+
+script:
+  - cd ${TRAVIS_BUILD_DIR}
+  - ./autogen.sh && ./configure && make check
+
+after_success:
+  - cd ${TRAVIS_BUILD_DIR}
+  - lcov --directory . --capture --output-file coverage.info # capture coverage info
+  - lcov --remove coverage.info 'test/*' '/usr/*' --output-file coverage.info # filter out system and test code
+  - lcov --list coverage.info
+  - coveralls-lcov --repo-token ${COVERALLS_TOKEN} coverage.info
