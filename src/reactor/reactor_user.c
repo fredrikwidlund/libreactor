@@ -1,6 +1,6 @@
 #include "reactor_user.h"
 
-void reactor_user_init(reactor_user *user, reactor_user_callback *callback, void *state)
+void reactor_user_construct(reactor_user *user, reactor_user_callback *callback, void *state)
 {
   *user = (reactor_user) {.callback = callback, .state = state};
 }
