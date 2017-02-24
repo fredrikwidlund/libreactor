@@ -12,6 +12,7 @@ extern "C" {
 
 #include "reactor/reactor_user.h"
 #include "reactor/reactor_core.h"
+#include "reactor/reactor_stream.h"
 
 #ifdef __cplusplus
 }

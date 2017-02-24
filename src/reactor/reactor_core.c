@@ -87,7 +87,7 @@ int reactor_core_run(void)
 
       for (i = 0; i < vector_size(&core.polls); i ++)
         {
-          pollfd = vector_at(&core.polls, i);
+          pollfd = reactor_core_poll(i);
           if (pollfd->revents)
             reactor_user_dispatch(vector_at(&core.users, i), REACTOR_CORE_EVENT_POLL, pollfd);
         }
