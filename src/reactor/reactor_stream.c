@@ -168,13 +168,12 @@ void reactor_stream_flush(reactor_stream *stream)
       return;
     }
 
+  reactor_stream_hold(stream);
   saved_state = stream->state;
   reactor_stream_error(stream);
   if (saved_state == REACTOR_STREAM_STATE_LINGER)
-    {
-      buffer_clear(&stream->output);
-      reactor_stream_close(stream);
-    }
+    reactor_stream_close(stream);
+  reactor_stream_release(stream);
 }
 
 void reactor_stream_write_notify(reactor_stream *stream)
