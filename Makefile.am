@@ -12,12 +12,14 @@ README.rst
 SOURCE_FILES = \
 src/reactor/reactor_user.c \
 src/reactor/reactor_core.c \
-src/reactor/reactor_stream.c
+src/reactor/reactor_stream.c \
+src/reactor/reactor_tcp.c
 
 HEADER_FILES = \
 src/reactor/reactor_user.h \
 src/reactor/reactor_core.h \
-src/reactor/reactor_stream.h
+src/reactor/reactor_stream.h \
+src/reactor/reactor_tcp.h
 
 AUTOMAKE_OPTIONS = subdir-objects
 lib_LTLIBRARIES = libreactor.la

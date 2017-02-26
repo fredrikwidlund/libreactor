@@ -5,6 +5,14 @@
 #define REACTOR_STREAM_BLOCK_SIZE 65536
 #endif
 
+enum reactor_stream_state
+{
+  REACTOR_STREAM_STATE_CLOSED  = 0x01,
+  REACTOR_STREAM_STATE_CLOSING = 0x02,
+  REACTOR_STREAM_STATE_OPEN    = 0x04,
+  REACTOR_STREAM_STATE_ERROR   = 0x08
+};
+
 enum reactor_stream_event
 {
   REACTOR_STREAM_EVENT_ERROR,
@@ -15,20 +23,12 @@ enum reactor_stream_event
   REACTOR_STREAM_EVENT_CLOSE
 };
 
-enum reactor_stream_state
-{
-  REACTOR_STREAM_STATE_CLOSED,
-  REACTOR_STREAM_STATE_OPEN,
-  REACTOR_STREAM_STATE_LINGER,
-  REACTOR_STREAM_STATE_ERROR
-};
-
 typedef struct reactor_stream reactor_stream;
 struct reactor_stream
 {
-  int           state;
+  short         ref;
+  short         state;
   reactor_user  user;
-  int           ref;
   int           fd;
   buffer        input;
   buffer        output;

@@ -100,6 +100,7 @@ void core()
   reactor_stream_open(&writer, core_writer, &writer, 1000);
   reactor_stream_write(&writer, "test", 4);
   reactor_stream_flush(&writer);
+  reactor_stream_close(&writer);
 
   reactor_stream_open(&writer, core_writer, &writer, 1000);
   reactor_stream_write(&writer, "test", 4);
