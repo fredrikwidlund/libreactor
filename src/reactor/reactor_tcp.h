@@ -3,11 +3,12 @@
 
 enum reactor_tcp_state
 {
-  REACTOR_TCP_STATE_CLOSED    = 0x01,
-  REACTOR_TCP_STATE_CLOSING   = 0x02,
-  REACTOR_TCP_STATE_RESOLVING = 0x04,
-  REACTOR_TCP_STATE_OPEN      = 0x08,
-  REACTOR_TCP_STATE_ERROR     = 0x10
+  REACTOR_TCP_STATE_CLOSED     = 0x01,
+  REACTOR_TCP_STATE_CLOSING    = 0x02,
+  REACTOR_TCP_STATE_RESOLVING  = 0x04,
+  REACTOR_TCP_STATE_CONNECTING = 0x08,
+  REACTOR_TCP_STATE_ACCEPTING  = 0x10,
+  REACTOR_TCP_STATE_ERROR      = 0x20
 };
 
 enum reactor_tcp_event
@@ -27,14 +28,12 @@ enum reactor_tcp_flag
 typedef struct reactor_tcp reactor_tcp;
 struct reactor_tcp
 {
-  short            ref;
-  short            state;
-  reactor_user     user;
-  int              fd;
-  int              flags;
-  char            *node;
-  char            *service;
-  struct addrinfo *addrinfo;
+  short             ref;
+  short             state;
+  reactor_user      user;
+  int               fd;
+  int               flags;
+  reactor_resolver *resolver;
 };
 
 void reactor_tcp_hold(reactor_tcp *);

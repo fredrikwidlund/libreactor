@@ -10,19 +10,20 @@
 #include <dynamic.h>
 
 #include "reactor_user.h"
+#include "reactor_pool.h"
 #include "reactor_core.h"
 #include "reactor_stream.h"
 
 static void reactor_stream_close_fd(reactor_stream *stream)
 {
-  reactor_core_deregister(stream->fd);
+  reactor_core_fd_deregister(stream->fd);
   (void) close(stream->fd);
   stream->fd = -1;
 }
 
 static void reactor_stream_error(reactor_stream *stream)
 {
-  ((struct pollfd *) reactor_core_poll(stream->fd))->events = 0;
+  ((struct pollfd *) reactor_core_fd_poll(stream->fd))->events = 0;
   stream->state = REACTOR_STREAM_STATE_ERROR;
   reactor_user_dispatch(&stream->user, REACTOR_STREAM_EVENT_ERROR, NULL);
 }
@@ -104,7 +105,7 @@ void reactor_stream_open(reactor_stream *stream, reactor_user_callback *callback
   buffer_construct(&stream->input);
   buffer_construct(&stream->output);
   (void) fcntl(stream->fd, F_SETFL,O_NONBLOCK);
-  reactor_core_register(stream->fd, reactor_stream_event, stream, POLLIN);
+  reactor_core_fd_register(stream->fd, reactor_stream_event, stream, POLLIN);
   reactor_stream_hold(stream);
 }
 
@@ -131,7 +132,7 @@ void reactor_stream_close(reactor_stream *stream)
 void reactor_stream_write(reactor_stream *stream, void *data, size_t size)
 {
   buffer_insert(&stream->output, buffer_size(&stream->output), data, size);
-  ((struct pollfd *) reactor_core_poll(stream->fd))->events |= POLLOUT; // XXX needed? write if fd == -1
+  ((struct pollfd *) reactor_core_fd_poll(stream->fd))->events |= POLLOUT; // XXX needed? write if fd == -1
 }
 
 void reactor_stream_flush(reactor_stream *stream)
@@ -156,7 +157,7 @@ void reactor_stream_flush(reactor_stream *stream)
     {
       if (stream->state == REACTOR_STREAM_STATE_OPEN)
         {
-          ((struct pollfd *) reactor_core_poll(stream->fd))->events &= ~POLLOUT;
+          ((struct pollfd *) reactor_core_fd_poll(stream->fd))->events &= ~POLLOUT;
           reactor_user_dispatch(&stream->user, REACTOR_STREAM_EVENT_WRITE, NULL);
         }
       else
@@ -166,7 +167,7 @@ void reactor_stream_flush(reactor_stream *stream)
 
   if (errno == EAGAIN)
     {
-      ((struct pollfd *) reactor_core_poll(stream->fd))->events |= POLLOUT;
+      ((struct pollfd *) reactor_core_fd_poll(stream->fd))->events |= POLLOUT;
       reactor_user_dispatch(&stream->user, REACTOR_STREAM_EVENT_BLOCKED, NULL);
       return;
     }
@@ -181,7 +182,7 @@ void reactor_stream_flush(reactor_stream *stream)
 
 void reactor_stream_write_notify(reactor_stream *stream)
 {
-  ((struct pollfd *) reactor_core_poll(stream->fd))->events |= POLLOUT;
+  ((struct pollfd *) reactor_core_fd_poll(stream->fd))->events |= POLLOUT;
 }
 
 void reactor_stream_data_consume(reactor_stream_data *data, size_t size)

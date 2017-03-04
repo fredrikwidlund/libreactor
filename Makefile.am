@@ -11,14 +11,18 @@ README.rst
 
 SOURCE_FILES = \
 src/reactor/reactor_user.c \
+src/reactor/reactor_pool.c \
 src/reactor/reactor_core.c \
 src/reactor/reactor_stream.c \
+src/reactor/reactor_resolver.c \
 src/reactor/reactor_tcp.c
 
 HEADER_FILES = \
 src/reactor/reactor_user.h \
+src/reactor/reactor_pool.h \
 src/reactor/reactor_core.h \
 src/reactor/reactor_stream.h \
+src/reactor/reactor_resolver.h \
 src/reactor/reactor_tcp.h
 
 AUTOMAKE_OPTIONS = subdir-objects
@@ -63,6 +67,12 @@ test_reactor_stream_CFLAGS = $(CHECK_CFLAGS)
 test_reactor_stream_LDADD = $(CHECK_LDADD)
 test_reactor_stream_LDFLAGS = $(CHECK_LDFLAGS_EXTRA)
 test_reactor_stream_SOURCES = test/reactor_stream.c test/mock.c
+
+check_PROGRAMS += test/reactor_resolver
+test_reactor_resolver_CFLAGS = $(CHECK_CFLAGS)
+test_reactor_resolver_LDADD = $(CHECK_LDADD)
+test_reactor_resolver_LDFLAGS = $(CHECK_LDFLAGS_EXTRA)
+test_reactor_resolver_SOURCES = test/reactor_resolver.c test/mock.c
 
 dist_noinst_SCRIPTS = test/valgrind.sh test/coverage.sh
 

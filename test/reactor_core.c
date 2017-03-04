@@ -6,8 +6,10 @@
 #include <fcntl.h>
 #include <setjmp.h>
 #include <signal.h>
-#include <sys/socket.h>
+#include <netdb.h>
 #include <poll.h>
+#include <sys/types.h>
+#include <sys/socket.h>
 
 #include <cmocka.h>
 #include <dynamic.h>
@@ -36,14 +38,14 @@ void reader_callback(void *state, int type, void *data)
 
   pollfd = data;
   assert_true(pollfd->revents & POLLIN);
-  assert_int_equal(type, REACTOR_CORE_EVENT_POLL);
+  assert_int_equal(type, REACTOR_CORE_EVENT_FD_POLL);
   assert_int_equal(*fd, pollfd->fd);
   n = recv(pollfd->fd, buffer, sizeof buffer, 0);
   assert_int_equal(n, 5);
   assert_string_equal(buffer, "test");
   e = close(pollfd->fd);
   assert_int_equal(e, 0);
-  reactor_core_deregister(pollfd->fd);
+  reactor_core_fd_deregister(pollfd->fd);
 }
 
 void reader()
@@ -60,13 +62,13 @@ void reader()
   assert_int_equal(e, 0);
 
   /* poll on fd read */
-  reactor_core_register(fd[0], reader_callback, &fd[0], POLLIN);
+  reactor_core_fd_register(fd[0], reader_callback, &fd[0], POLLIN);
   n = send(fd[1], "test", 5, 0);
   assert_int_equal(n, 5);
 
   /* dummy register low fd on non empty core */
-  reactor_core_register(fd0, NULL, NULL, POLLIN);
-  reactor_core_deregister(fd0);
+  reactor_core_fd_register(fd0, NULL, NULL, POLLIN);
+  reactor_core_fd_deregister(fd0);
   e = close(fd0);
   assert_int_equal(e, 0);
 
@@ -86,7 +88,7 @@ void poll_failure()
   /* simulare poll failure */
   mock_poll_failure = 1;
   reactor_core_construct();
-  reactor_core_register(0, NULL, 0, POLLIN);
+  reactor_core_fd_register(0, NULL, 0, POLLIN);
   e = reactor_core_run();
   assert_int_equal(e, -1);
   reactor_core_destruct();

@@ -6,6 +6,8 @@
 #include <fcntl.h>
 #include <setjmp.h>
 #include <signal.h>
+#include <netdb.h>
+#include <sys/types.h>
 #include <sys/socket.h>
 
 #include <cmocka.h>

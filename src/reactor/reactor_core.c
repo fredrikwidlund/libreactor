@@ -1,18 +1,26 @@
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <unistd.h>
 #include <poll.h>
+#include <sched.h>
+#include <sys/socket.h>
+#include <err.h>
 
 #include <dynamic.h>
 
 #include "reactor_user.h"
+#include "reactor_pool.h"
 #include "reactor_core.h"
 
 typedef struct reactor_core reactor_core;
 struct reactor_core
 {
-  vector polls;
-  vector users;
+  vector       polls;
+  vector       users;
+  reactor_pool pool;
 };
 
 static __thread struct reactor_core core = {0};
@@ -42,35 +50,13 @@ void reactor_core_construct()
 {
   vector_construct(&core.polls, sizeof (struct pollfd));
   vector_construct(&core.users, sizeof (reactor_user));
+  reactor_pool_construct(&core.pool);
 }
 
 void reactor_core_destruct()
 {
   vector_destruct(&core.polls);
   vector_destruct(&core.users);
-}
-
-void reactor_core_register(int fd, reactor_user_callback *callback, void *state, int events)
-{
-  reactor_core_grow(fd + 1);
-  *(struct pollfd *) reactor_core_poll(fd) = (struct pollfd) {.fd = fd, .events = events};
-  *(reactor_user *) reactor_core_user(fd) = (reactor_user) {.callback = callback, .state = state};
-}
-
-void reactor_core_deregister(int fd)
-{
-  *(struct pollfd *) reactor_core_poll(fd) = (struct pollfd) {.fd = -1};
-  reactor_core_shrink();
-}
-
-void *reactor_core_poll(int fd)
-{
-  return vector_at(&core.polls, fd);
-}
-
-void *reactor_core_user(int fd)
-{
-  return vector_at(&core.users, fd);
 }
 
 int reactor_core_run(void)
@@ -87,11 +73,39 @@ int reactor_core_run(void)
 
       for (i = 0; i < vector_size(&core.polls); i ++)
         {
-          pollfd = reactor_core_poll(i);
+          pollfd = reactor_core_fd_poll(i);
           if (pollfd->revents)
-            reactor_user_dispatch(vector_at(&core.users, i), REACTOR_CORE_EVENT_POLL, pollfd);
+            reactor_user_dispatch(vector_at(&core.users, i), REACTOR_CORE_EVENT_FD_POLL, pollfd);
         }
     }
 
   return 0;
+}
+
+void reactor_core_fd_register(int fd, reactor_user_callback *callback, void *state, int events)
+{
+  reactor_core_grow(fd + 1);
+  *(struct pollfd *) reactor_core_fd_poll(fd) = (struct pollfd) {.fd = fd, .events = events};
+  *(reactor_user *) reactor_core_fd_user(fd) = (reactor_user) {.callback = callback, .state = state};
+}
+
+void reactor_core_fd_deregister(int fd)
+{
+  *(struct pollfd *) reactor_core_fd_poll(fd) = (struct pollfd) {.fd = -1};
+  reactor_core_shrink();
+}
+
+void *reactor_core_fd_poll(int fd)
+{
+  return vector_at(&core.polls, fd);
+}
+
+void *reactor_core_fd_user(int fd)
+{
+  return vector_at(&core.users, fd);
+}
+
+void reactor_core_job_register(reactor_user_callback *callback, void *state)
+{
+  reactor_pool_create_job(&core.pool, callback, state);
 }
