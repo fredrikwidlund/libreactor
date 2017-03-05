@@ -55,6 +55,7 @@ void reactor_core_construct()
 
 void reactor_core_destruct()
 {
+  reactor_pool_destruct(&core.pool);
   vector_destruct(&core.polls);
   vector_destruct(&core.users);
 }
@@ -75,7 +76,7 @@ int reactor_core_run(void)
         {
           pollfd = reactor_core_fd_poll(i);
           if (pollfd->revents)
-            reactor_user_dispatch(vector_at(&core.users, i), REACTOR_CORE_EVENT_FD_POLL, pollfd);
+            reactor_user_dispatch(vector_at(&core.users, i), REACTOR_CORE_EVENT_FD, pollfd);
         }
     }
 
@@ -107,5 +108,5 @@ void *reactor_core_fd_user(int fd)
 
 void reactor_core_job_register(reactor_user_callback *callback, void *state)
 {
-  reactor_pool_create_job(&core.pool, callback, state);
+  reactor_pool_enqueue(&core.pool, callback, state);
 }

@@ -3,7 +3,7 @@
 
 enum reactor_core_event
 {
-  REACTOR_CORE_EVENT_FD_POLL
+  REACTOR_CORE_EVENT_FD
 };
 
 void  reactor_core_construct();

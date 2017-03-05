@@ -5,6 +5,10 @@
 #define REACTOR_POOL_STACK_SIZE 65536
 #endif
 
+#ifndef REACTOR_POOL_WORKERS_MAX
+#define REACTOR_POOL_WORKERS_MAX 1024
+#endif
+
 enum reactor_pool_event
 {
   REACTOR_POOL_EVENT_CALL,
@@ -29,10 +33,14 @@ struct reactor_pool
 {
   int                queue[2];
   size_t             jobs;
+  size_t             workers_min;
+  size_t             workers_max;
   vector             workers;
 };
 
 void reactor_pool_construct(reactor_pool *);
-void reactor_pool_create_job(reactor_pool *, reactor_user_callback *, void *);
+void reactor_pool_destruct(reactor_pool *);
+void reactor_pool_limits(reactor_pool *, size_t, size_t);
+void reactor_pool_enqueue(reactor_pool *, reactor_user_callback *, void *);
 
 #endif /* REACTOR_POOL_H_INCLUDED */

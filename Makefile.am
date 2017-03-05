@@ -78,6 +78,13 @@ dist_noinst_SCRIPTS = test/valgrind.sh test/coverage.sh
 
 TESTS = $(check_PROGRAMS) test/valgrind.sh test/coverage.sh
 
+## examples ###
+
+bin_PROGRAMS = \
+example/pool
+
+example_pool_LDFLAGS = -lreactor -ldynamic
+
 MAINTAINERCLEANFILES = aclocal.m4 config.h.in configure Makefile.in docs/Makefile.in libreactor-?.?.?.tar.gz
 maintainer-clean-local:; rm -rf autotools m4 libreactor-?.?.?
 

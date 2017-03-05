@@ -38,7 +38,7 @@ void reader_callback(void *state, int type, void *data)
 
   pollfd = data;
   assert_true(pollfd->revents & POLLIN);
-  assert_int_equal(type, REACTOR_CORE_EVENT_FD_POLL);
+  assert_int_equal(type, REACTOR_CORE_EVENT_FD);
   assert_int_equal(*fd, pollfd->fd);
   n = recv(pollfd->fd, buffer, sizeof buffer, 0);
   assert_int_equal(n, 5);
