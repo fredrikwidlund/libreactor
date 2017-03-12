@@ -18,24 +18,29 @@ enum reactor_pool_event
 typedef struct reactor_pool_job reactor_pool_job;
 struct reactor_pool_job
 {
-  reactor_user       user;
+  size_t               job;
+  reactor_user         user;
+  TAILQ_ENTRY(reactor_pool_job)   entries;
 };
 
 typedef struct reactor_pool_worker reactor_pool_worker;
 struct reactor_pool_worker
 {
-  pid_t              pid;
-  void              *stack;
+  pid_t                pid;
+  void                *stack;
+  TAILQ_ENTRY(reactor_pool_worker)   entries;
 };
 
 typedef struct reactor_pool reactor_pool;
 struct reactor_pool
 {
-  int                queue[2];
-  size_t             jobs;
-  size_t             workers_min;
-  size_t             workers_max;
-  vector             workers;
+  int                  queue[2];
+  TAILQ_HEAD(, reactor_pool_job)  jobs_head;
+  size_t               jobs;
+  TAILQ_HEAD(, reactor_pool_worker)  workers_head;
+  size_t               workers;
+  size_t               workers_min;
+  size_t               workers_max;
 };
 
 void reactor_pool_construct(reactor_pool *);

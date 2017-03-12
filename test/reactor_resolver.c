@@ -8,9 +8,10 @@
 #include <setjmp.h>
 #include <signal.h>
 #include <poll.h>
+#include <netdb.h>
 #include <sys/socket.h>
 #include <sys/types.h>
-#include <netdb.h>
+#include <sys/queue.h>
 
 #include <cmocka.h>
 #include <dynamic.h>

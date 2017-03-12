@@ -7,6 +7,7 @@
 #include <poll.h>
 #include <sched.h>
 #include <sys/socket.h>
+#include <sys/queue.h>
 #include <err.h>
 
 #include <dynamic.h>

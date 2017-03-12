@@ -6,6 +6,7 @@
 #include <unistd.h>
 #include <sys/param.h>
 #include <sys/socket.h>
+#include <sys/queue.h>
 
 #include <dynamic.h>
 

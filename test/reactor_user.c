@@ -9,6 +9,7 @@
 #include <netdb.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/queue.h>
 
 #include <cmocka.h>
 #include <dynamic.h>

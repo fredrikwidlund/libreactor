@@ -6,6 +6,7 @@
 #include <signal.h>
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/queue.h>
 
 #include <dynamic.h>
 #include <reactor.h>
@@ -17,11 +18,9 @@ void event(void *state, int type, void *data)
   switch (type)
     {
     case REACTOR_POOL_EVENT_CALL:
-      printf("call\n");
       sleep(1);
       break;
     case REACTOR_POOL_EVENT_RETURN:
-      printf("return\n");
       break;
     }
 }
@@ -35,7 +34,7 @@ int main()
     {
       reactor_core_construct();
       reactor_pool_construct(&pool);
-      for (j = 0; j < 64; j ++)
+      for (j = 0; j < 1000; j ++)
         reactor_pool_enqueue(&pool, event, NULL);
       reactor_core_run();
       reactor_pool_destruct(&pool);
