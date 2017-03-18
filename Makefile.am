@@ -81,9 +81,13 @@ TESTS = $(check_PROGRAMS) test/valgrind.sh test/coverage.sh
 ## examples ###
 
 bin_PROGRAMS = \
-example/pool
+example/pool \
+example/lookup \
+example/tcp
 
 example_pool_LDFLAGS = -lreactor -ldynamic
+example_lookup_LDFLAGS = -lreactor -ldynamic
+example_tcp_LDFLAGS = -lreactor -ldynamic
 
 MAINTAINERCLEANFILES = aclocal.m4 config.h.in configure Makefile.in docs/Makefile.in libreactor-?.?.?.tar.gz
 maintainer-clean-local:; rm -rf autotools m4 libreactor-?.?.?

@@ -31,7 +31,7 @@ struct reactor_tcp
   short             ref;
   short             state;
   reactor_user      user;
-  int               fd;
+  int               socket;
   int               flags;
   reactor_resolver *resolver;
 };

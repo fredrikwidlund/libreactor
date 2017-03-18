@@ -34,6 +34,7 @@ static void reactor_resolver_job(void *state, int type, void *data)
       (void) getaddrinfo(resolver->node, resolver->service, &resolver->hints, &resolver->addrinfo);
       break;
     case REACTOR_POOL_EVENT_RETURN:
+      reactor_resolver_hold(resolver);
       reactor_user_dispatch(&resolver->user, REACTOR_RESOLVER_EVENT_RESULT, resolver->addrinfo);
       freeaddrinfo(resolver->addrinfo);
       reactor_resolver_close(resolver);
@@ -93,6 +94,7 @@ void reactor_resolver_open(reactor_resolver *resolver, reactor_user_callback *ca
   resolver->state = REACTOR_RESOLVER_STATE_OPEN;
   resolver->node = NULL;
   resolver->service = NULL;
+  resolver->addrinfo = NULL;
   reactor_user_construct(&resolver->user, callback, state);
   resolver->hints = hints ? *hints : (struct addrinfo){.ai_family = AF_INET, .ai_socktype = SOCK_STREAM};
   reactor_resolver_hold(resolver);
