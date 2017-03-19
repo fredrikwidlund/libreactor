@@ -15,7 +15,8 @@ src/reactor/reactor_pool.c \
 src/reactor/reactor_core.c \
 src/reactor/reactor_stream.c \
 src/reactor/reactor_resolver.c \
-src/reactor/reactor_tcp.c
+src/reactor/reactor_tcp.c \
+src/reactor/reactor_http.c
 
 HEADER_FILES = \
 src/reactor/reactor_user.h \
@@ -23,7 +24,8 @@ src/reactor/reactor_pool.h \
 src/reactor/reactor_core.h \
 src/reactor/reactor_stream.h \
 src/reactor/reactor_resolver.h \
-src/reactor/reactor_tcp.h
+src/reactor/reactor_tcp.h \
+src/reactor/reactor_http.h
 
 AUTOMAKE_OPTIONS = subdir-objects
 lib_LTLIBRARIES = libreactor.la
@@ -83,11 +85,13 @@ TESTS = $(check_PROGRAMS) test/valgrind.sh test/coverage.sh
 bin_PROGRAMS = \
 example/pool \
 example/lookup \
-example/tcp
+example/tcp \
+example/http
 
 example_pool_LDFLAGS = -lreactor -ldynamic
 example_lookup_LDFLAGS = -lreactor -ldynamic
 example_tcp_LDFLAGS = -lreactor -ldynamic
+example_http_LDFLAGS = -lreactor -ldynamic
 
 MAINTAINERCLEANFILES = aclocal.m4 config.h.in configure Makefile.in docs/Makefile.in libreactor-?.?.?.tar.gz
 maintainer-clean-local:; rm -rf autotools m4 libreactor-?.?.?

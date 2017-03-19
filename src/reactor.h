@@ -16,6 +16,7 @@ extern "C" {
 #include "reactor/reactor_stream.h"
 #include "reactor/reactor_resolver.h"
 #include "reactor/reactor_tcp.h"
+#include "reactor/reactor_http.h"
 
 #ifdef __cplusplus
 }

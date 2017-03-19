@@ -133,7 +133,7 @@ void reactor_stream_close(reactor_stream *stream)
 void reactor_stream_write(reactor_stream *stream, void *data, size_t size)
 {
   buffer_insert(&stream->output, buffer_size(&stream->output), data, size);
-  ((struct pollfd *) reactor_core_fd_poll(stream->fd))->events |= POLLOUT; // XXX needed? write if fd == -1
+  //((struct pollfd *) reactor_core_fd_poll(stream->fd))->events |= POLLOUT; // XXX needed? write if fd == -1
 }
 
 void reactor_stream_flush(reactor_stream *stream)
