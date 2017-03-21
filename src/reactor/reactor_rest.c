@@ -61,8 +61,8 @@ void reactor_rest_init(reactor_rest *rest, reactor_user_callback *callback, void
   reactor_user_init(&rest->user, callback, state);
   reactor_http_init(&rest->http, reactor_rest_http_event, rest);
   reactor_timer_init(&rest->timer, reactor_rest_timer_event, rest);
-  vector_init(&rest->maps, sizeof(reactor_rest_map));
-  vector_release(&rest->maps, reactor_rest_map_release);
+  vector_construct(&rest->maps, sizeof(reactor_rest_map));
+  vector_object_release(&rest->maps, reactor_rest_map_release);
 }
 
 void reactor_rest_name(reactor_rest *rest, const char *name)

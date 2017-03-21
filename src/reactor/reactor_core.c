@@ -17,8 +17,8 @@ int reactor_core_open(void)
   if (core.state != REACTOR_CORE_CLOSED)
     return -1;
 
-  vector_init(&core.polls, sizeof(struct pollfd));
-  vector_init(&core.descs, sizeof(reactor_desc *));
+  vector_construct(&core.polls, sizeof(struct pollfd));
+  vector_construct(&core.descs, sizeof(reactor_desc *));
   core.state = REACTOR_CORE_OPEN;
   return 0;
 }
@@ -60,22 +60,11 @@ void reactor_core_close(void)
 
 int reactor_core_desc_add(reactor_desc *desc, int fd, int events)
 {
-  int e;
-
   if (fd < 0)
     return -1;
 
-  e = vector_push_back(&core.polls, (struct pollfd[]) {{.fd = fd, .events = events}});
-  if (e == -1)
-    return -1;
-
-  e = vector_push_back(&core.descs, &desc);
-  if (e == -1)
-    {
-      vector_pop_back(&core.polls);
-      return -1;
-    }
-
+  vector_push_back(&core.polls, (struct pollfd[]) {{.fd = fd, .events = events}});
+  vector_push_back(&core.descs, &desc);
   desc->index = vector_size(&core.polls) - 1;
   return 0;
 }

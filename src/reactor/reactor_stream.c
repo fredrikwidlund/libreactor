@@ -60,8 +60,8 @@ void reactor_stream_init(reactor_stream *stream, reactor_user_callback *callback
   *stream = (reactor_stream) {.state = REACTOR_STREAM_CLOSED};
   reactor_user_init(&stream->user, callback, state);
   reactor_desc_init(&stream->desc, reactor_stream_event, stream);
-  buffer_init(&stream->input);
-  buffer_init(&stream->output);
+  buffer_construct(&stream->input);
+  buffer_construct(&stream->output);
 }
 
 void reactor_stream_open(reactor_stream *stream, int fd)
@@ -187,11 +187,7 @@ void reactor_stream_read(reactor_stream *stream)
 
 void reactor_stream_write(reactor_stream *stream, void *base, size_t size)
 {
-  int e;
-
-  e = buffer_insert(&stream->output, buffer_size(&stream->output), base, size);
-  if (e == -1)
-    reactor_stream_error(stream);
+  buffer_insert(&stream->output, buffer_size(&stream->output), base, size);
 }
 
 void reactor_stream_write_direct(reactor_stream *stream, void *base, size_t size)
@@ -231,20 +227,14 @@ void reactor_stream_write_unsigned(reactor_stream *stream, uint32_t n)
   uint32_t t, size, x;
   buffer *b;
   char *base;
-  int e;
 
   t = (32 - __builtin_clz(n | 1)) * 1233 >> 12;
   size = t - (n < pow10[t]) + 1;
 
   b = &stream->output;
-  e = buffer_reserve(b, buffer_size(b) + size);
-  if (e == -1)
-    {
-      reactor_stream_error(stream);
-      return;
-    }
+  buffer_reserve(b, buffer_size(b) + size);
   b->size += size;
-  base = buffer_data(b) + buffer_size(b);
+  base = (char *) buffer_data(b) + buffer_size(b);
 
   while (n >= 100)
     {
