@@ -238,7 +238,7 @@ void reactor_rest_add_regex(reactor_rest *rest, char *method, char *regex, react
 void reactor_rest_respond_empty(reactor_rest_request *request, int status, char *reason)
 {
   reactor_http_message message = {
-    .type = REACTOR_HTTP_MESSAGE_RESPONSE, .version = 1, .status = status, .reason = reason,
+    .reason = reason, .type = REACTOR_HTTP_MESSAGE_RESPONSE, .version = 1, .status = status,
     .header_size = 2, .header = (reactor_http_header[]) {
       {"Server", (char *) request->rest->name},
       {"Date", request->rest->date}},
@@ -250,7 +250,7 @@ void reactor_rest_respond_empty(reactor_rest_request *request, int status, char 
 void reactor_rest_respond_body(reactor_rest_request *request, int status, char *reason, char *content_type, void *body, size_t body_size)
 {
   reactor_http_message message = {
-    .type = REACTOR_HTTP_MESSAGE_RESPONSE, .version = 1, .status = status, .reason = reason,
+    .reason = reason, .type = REACTOR_HTTP_MESSAGE_RESPONSE, .version = 1, .status = status,
     .header_size = 3, .header = (reactor_http_header[]) {
       {"Server", (char *) request->rest->name},
       {"Date", request->rest->date},

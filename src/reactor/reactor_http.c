@@ -80,12 +80,13 @@ void reactor_http_event(void *state, int type, void *data)
 {
   reactor_http *http = state;
   reactor_http_session *session;
-  int s = *(int *) data;
+  int s;
 
   switch (type)
     {
     case REACTOR_TCP_CONNECT:
     case REACTOR_TCP_ACCEPT:
+      s = *(int *) data;
       reactor_http_session_new(&session, http);
       if (!session)
         {
@@ -253,7 +254,7 @@ void reactor_http_session_new(reactor_http_session **session, reactor_http *http
     {
       .state = REACTOR_HTTP_SESSION_OPEN,
       .http = http,
-      .message.type = http->flags & REACTOR_HTTP_SERVER ? REACTOR_HTTP_MESSAGE_REQUEST : REACTOR_HTTP_MESSAGE_RESPONSE,
+      .message = {.type = http->flags & REACTOR_HTTP_SERVER ? REACTOR_HTTP_MESSAGE_REQUEST : REACTOR_HTTP_MESSAGE_RESPONSE}
     };
   http->ref ++;
 }
