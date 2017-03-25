@@ -232,5 +232,6 @@ size_t reactor_stream_data_size(reactor_stream_data *data)
 
 void reactor_stream_data_consume(reactor_stream_data *data, size_t size)
 {
+  data->base = (char *) data->base + size;
   data->size -= size;
 }

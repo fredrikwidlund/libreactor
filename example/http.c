@@ -34,11 +34,10 @@ struct app_transaction
   int           client;
 };
 
-void http_event(void *state, int type, void *data)
+static void http_event(void *state, int type, void *data)
 {
   app_transaction *tx = state;
-  reactor_http_response *response;
-  reactor_http_request *request;
+  reactor_http_response *response = data;
 
   switch (type)
     {
@@ -50,19 +49,17 @@ void http_event(void *state, int type, void *data)
       free(tx);
       break;
     case REACTOR_HTTP_EVENT_RESPONSE:
-      response = data;
+      (void) fprintf(stdout, "%.*s", (int) response->size, (char *) response->data);
       reactor_http_close(&tx->http);
       break;
     case REACTOR_HTTP_EVENT_REQUEST:
-      request = data;
       reactor_http_write_response(&tx->http, (reactor_http_response[]){{1, 200, "OK",
-              2, (reactor_http_header[]){{"Content-Type", "plain/text"}, {"Content-Length", "13"}}, "Hello, World\n", 13}});
-      reactor_http_flush(&tx->http);
+              1, (reactor_http_header[]){{"Content-Type", "text/plain"}}, "Hello, World\n", 13}});
       break;
     }
 }
 
-void tcp_event(void *state, int type, void *data)
+static void tcp_event(void *state, int type, void *data)
 {
   app *app = state;
   app_transaction *tx;

@@ -77,8 +77,9 @@ void reactor_http_write_response(reactor_http *, reactor_http_response *);
 void reactor_http_write_request_line(reactor_http *, char *, char *, int);
 void reactor_http_write_status_line(reactor_http *, int, int, char *);
 void reactor_http_write_headers(reactor_http *, reactor_http_header *, size_t);
-void reactor_http_write_body(reactor_http *, void *, size_t);
+void reactor_http_write_content_length(reactor_http *, size_t);
 void reactor_http_write_end(reactor_http *);
+void reactor_http_write_body(reactor_http *, void *, size_t);
 void reactor_http_flush(reactor_http *);
 
 #endif /* REACTOR_HTTP_H_INCLUDED */
