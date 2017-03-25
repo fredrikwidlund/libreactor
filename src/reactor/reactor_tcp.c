@@ -185,7 +185,7 @@ void reactor_tcp_close(reactor_tcp *tcp)
   if (tcp->state & (REACTOR_TCP_STATE_CLOSED | REACTOR_TCP_STATE_CLOSING))
     return;
 
-  reactor_tcp_close_fd(tcp);
   tcp->state = REACTOR_TCP_STATE_CLOSING;
+  reactor_tcp_close_fd(tcp);
   reactor_tcp_release(tcp);
 }

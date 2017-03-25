@@ -15,53 +15,99 @@
 #include <dynamic.h>
 #include <reactor.h>
 
+typedef struct app app;
+struct app
+{
+  char         *host;
+  char         *port;
+  char         *resource;
+  reactor_tcp   tcp;
+  reactor_http  http;
+  int           client;
+};
+
+typedef struct app_transaction app_transaction;
+struct app_transaction
+{
+  app          *app;
+  reactor_http  http;
+  int           client;
+};
+
 void http_event(void *state, int type, void *data)
 {
-  reactor_http *http = state;
+  app_transaction *tx = state;
+  reactor_http_response *response;
+  reactor_http_request *request;
 
-  (void) http;
-  (void) data;
   switch (type)
     {
+    case REACTOR_HTTP_EVENT_HANGUP:
+    case REACTOR_HTTP_EVENT_ERROR:
+      reactor_http_close(&tx->http);
+      break;
+    case REACTOR_HTTP_EVENT_CLOSE:
+      free(tx);
+      break;
+    case REACTOR_HTTP_EVENT_RESPONSE:
+      response = data;
+      reactor_http_close(&tx->http);
+      break;
+    case REACTOR_HTTP_EVENT_REQUEST:
+      request = data;
+      reactor_http_write_response(&tx->http, (reactor_http_response[]){{1, 200, "OK",
+              2, (reactor_http_header[]){{"Content-Type", "plain/text"}, {"Content-Length", "13"}}, "Hello, World\n", 13}});
+      reactor_http_flush(&tx->http);
+      break;
     }
 }
 
 void tcp_event(void *state, int type, void *data)
 {
-  reactor_tcp *tcp = state;
-  reactor_http *http;
+  app *app = state;
+  app_transaction *tx;
   int s;
 
-  (void) tcp;
   switch (type)
     {
     case REACTOR_TCP_EVENT_ERROR:
-      (void) fprintf(stderr, "error\n");
-      reactor_tcp_close(tcp);
+      (void) fprintf(stderr, "[tcp] error\n");
+      reactor_tcp_close(&app->tcp);
       break;
     case REACTOR_TCP_EVENT_CONNECT:
       s = *(int *) data;
-      http = malloc(sizeof *http);
-      reactor_http_open(http, http_event, http, s, 0);
-      reactor_http_write_request(http, (reactor_http_request[]){{"GET", "/", 1,
-              (reactor_http_header[]){{"Host", "test"}, {"Connection", "close"}, {0}}, NULL, 0}});
-      reactor_http_flush(http);
+      tx = malloc(sizeof *tx);
+      tx->app = app;
+      reactor_http_open(&tx->http, http_event, tx, s, 0);
+      reactor_http_write_request(&tx->http, (reactor_http_request[]){{"GET", app->resource, 1,
+              2, (reactor_http_header[]){{"Host", app->host}, {"Connection", "close"}}, NULL, 0}});
+      reactor_http_flush(&tx->http);
+      break;
+    case REACTOR_TCP_EVENT_ACCEPT:
+      s = *(int *) data;
+      tx = malloc(sizeof *tx);
+      tx->app = app;
+      reactor_http_open(&tx->http, http_event, tx, s, REACTOR_HTTP_FLAG_SERVER);
       break;
     }
 }
 
 int main(int argc, char **argv)
 {
-  reactor_tcp tcp;
+  app app;
 
   if (argc != 5 ||
       (strcmp(argv[1], "client") == 0 &&
        strcmp(argv[1], "server") == 0))
     err(1, "usage: http [client|server] <host> <port> <resource>");
 
+  app.host = argv[2];
+  app.port = argv[3];
+  app.resource = argv[4];
+  app.client = strcmp(argv[1], "client") == 0;
+
   reactor_core_construct();
-  reactor_tcp_open(&tcp, tcp_event, &tcp, argv[2], argv[3],
-                   strcmp(argv[1], "server") == 0 ? REACTOR_TCP_FLAG_SERVER : 0);
+  reactor_tcp_open(&app.tcp, tcp_event, &app, app.host, app.port, app.client ? 0 : REACTOR_TCP_FLAG_SERVER);
   reactor_core_run();
   reactor_core_destruct();
 }

@@ -1,6 +1,10 @@
 #ifndef REACTOR_HTTP_H_INCLUDED
 #define REACTOR_HTTP_H_INCLUDED
 
+#ifndef REACTOR_HTTP_HEADERS_MAX
+#define REACTOR_HTTP_HEADERS_MAX 32
+#endif
+
 enum reactor_http_state
 {
   REACTOR_HTTP_STATE_CLOSED     = 0x01,
@@ -11,6 +15,9 @@ enum reactor_http_state
 enum reactor_http_event
 {
   REACTOR_HTTP_EVENT_ERROR,
+  REACTOR_HTTP_EVENT_REQUEST,
+  REACTOR_HTTP_EVENT_RESPONSE,
+  REACTOR_HTTP_EVENT_HANGUP,
   REACTOR_HTTP_EVENT_CLOSE
 };
 
@@ -34,6 +41,7 @@ struct reactor_http
   int                  flags;
   reactor_user         user;
   reactor_stream       stream;
+  reactor_http_parser  parser;
 };
 
 typedef struct reactor_http_request reactor_http_request;
@@ -42,6 +50,19 @@ struct reactor_http_request
   char                *method;
   char                *path;
   int                  version;
+  size_t               header_count;
+  reactor_http_header *headers;
+  void                *data;
+  size_t               size;
+};
+
+typedef struct reactor_http_response reactor_http_response;
+struct reactor_http_response
+{
+  int                  version;
+  int                  status;
+  char                *reason;
+  size_t               header_count;
   reactor_http_header *headers;
   void                *data;
   size_t               size;
@@ -52,8 +73,10 @@ void reactor_http_release(reactor_http *);
 void reactor_http_open(reactor_http *, reactor_user_callback *, void *, int , int);
 void reactor_http_close(reactor_http *);
 void reactor_http_write_request(reactor_http *, reactor_http_request *);
+void reactor_http_write_response(reactor_http *, reactor_http_response *);
 void reactor_http_write_request_line(reactor_http *, char *, char *, int);
-void reactor_http_write_headers(reactor_http *, reactor_http_header *);
+void reactor_http_write_status_line(reactor_http *, int, int, char *);
+void reactor_http_write_headers(reactor_http *, reactor_http_header *, size_t);
 void reactor_http_write_body(reactor_http *, void *, size_t);
 void reactor_http_write_end(reactor_http *);
 void reactor_http_flush(reactor_http *);

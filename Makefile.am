@@ -10,12 +10,14 @@ LICENSE \
 README.rst
 
 SOURCE_FILES = \
+src/picohttpparser/picohttpparser.c \
 src/reactor/reactor_user.c \
 src/reactor/reactor_pool.c \
 src/reactor/reactor_core.c \
 src/reactor/reactor_stream.c \
 src/reactor/reactor_resolver.c \
 src/reactor/reactor_tcp.c \
+src/reactor/reactor_http_parser.c \
 src/reactor/reactor_http.c
 
 HEADER_FILES = \
@@ -25,6 +27,7 @@ src/reactor/reactor_core.h \
 src/reactor/reactor_stream.h \
 src/reactor/reactor_resolver.h \
 src/reactor/reactor_tcp.h \
+src/reactor/reactor_http_parser.h \
 src/reactor/reactor_http.h
 
 AUTOMAKE_OPTIONS = subdir-objects

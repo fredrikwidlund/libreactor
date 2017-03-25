@@ -41,13 +41,16 @@ struct reactor_stream_data
   size_t        size;
 };
 
-void reactor_stream_hold(reactor_stream *);
-void reactor_stream_release(reactor_stream *);
-void reactor_stream_open(reactor_stream *, reactor_user_callback *, void *, int);
-void reactor_stream_close(reactor_stream *);
-void reactor_stream_write(reactor_stream *, void *, size_t);
-void reactor_stream_flush(reactor_stream *);
-void reactor_stream_write_notify(reactor_stream *);
-void reactor_stream_data_consume(reactor_stream_data *, size_t);
+void    reactor_stream_hold(reactor_stream *);
+void    reactor_stream_release(reactor_stream *);
+void    reactor_stream_open(reactor_stream *, reactor_user_callback *, void *, int);
+void    reactor_stream_close(reactor_stream *);
+void    reactor_stream_write(reactor_stream *, void *, size_t);
+void    reactor_stream_write_unsigned(reactor_stream *, uint32_t);
+void    reactor_stream_flush(reactor_stream *);
+void    reactor_stream_write_notify(reactor_stream *);
+void   *reactor_stream_data_base(reactor_stream_data *);
+size_t  reactor_stream_data_size(reactor_stream_data *);
+void    reactor_stream_data_consume(reactor_stream_data *, size_t);
 
 #endif /* REACTOR_STREAM_H_INCLUDED */

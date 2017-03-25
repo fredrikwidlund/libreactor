@@ -133,8 +133,42 @@ void reactor_stream_close(reactor_stream *stream)
 void reactor_stream_write(reactor_stream *stream, void *data, size_t size)
 {
   buffer_insert(&stream->output, buffer_size(&stream->output), data, size);
-  //((struct pollfd *) reactor_core_fd_poll(stream->fd))->events |= POLLOUT; // XXX needed? write if fd == -1
 }
+
+void reactor_stream_write_unsigned(reactor_stream *stream, uint32_t n)
+{
+  static const uint32_t pow10[] = {0, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000};
+  static const char digits[200] =
+    "0001020304050607080910111213141516171819202122232425262728293031323334353637383940414243444546474849"
+    "5051525354555657585960616263646566676869707172737475767778798081828384858687888990919293949596979899";
+  uint32_t t, size, x;
+  buffer *b;
+  char *base;
+
+  t = (32 - __builtin_clz(n | 1)) * 1233 >> 12;
+  size = t - (n < pow10[t]) + 1;
+  b = &stream->output;
+  buffer_reserve(b, buffer_size(b) + size);
+  b->size += size;
+  base = (char *) buffer_data(b) + buffer_size(b);
+
+  while (n >= 100)
+    {
+      x = (n % 100) << 1;
+      n /= 100;
+      *--base = digits[x + 1];
+      *--base = digits[x];
+    }
+  if (n >= 10)
+    {
+      x = n << 1;
+      *--base = digits[x + 1];
+      *--base = digits[x];
+    }
+  else
+    *--base = n + '0';
+}
+
 
 void reactor_stream_flush(reactor_stream *stream)
 {
@@ -184,6 +218,16 @@ void reactor_stream_flush(reactor_stream *stream)
 void reactor_stream_write_notify(reactor_stream *stream)
 {
   ((struct pollfd *) reactor_core_fd_poll(stream->fd))->events |= POLLOUT;
+}
+
+void *reactor_stream_data_base(reactor_stream_data *data)
+{
+  return data->base;
+}
+
+size_t reactor_stream_data_size(reactor_stream_data *data)
+{
+  return data->size;
 }
 
 void reactor_stream_data_consume(reactor_stream_data *data, size_t size)
