@@ -18,6 +18,7 @@ extern "C" {
 #include "reactor/reactor_tcp.h"
 #include "reactor/reactor_http_parser.h"
 #include "reactor/reactor_http.h"
+#include "reactor/reactor_http_server.h"
 
 #ifdef __cplusplus
 }
