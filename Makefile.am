@@ -14,6 +14,7 @@ src/picohttpparser/picohttpparser.c \
 src/reactor/reactor_user.c \
 src/reactor/reactor_pool.c \
 src/reactor/reactor_core.c \
+src/reactor/reactor_timer.c \
 src/reactor/reactor_stream.c \
 src/reactor/reactor_resolver.c \
 src/reactor/reactor_tcp.c \
@@ -25,6 +26,7 @@ HEADER_FILES = \
 src/reactor/reactor_user.h \
 src/reactor/reactor_pool.h \
 src/reactor/reactor_core.h \
+src/reactor/reactor_timer.h \
 src/reactor/reactor_stream.h \
 src/reactor/reactor_resolver.h \
 src/reactor/reactor_tcp.h \
@@ -92,13 +94,15 @@ example/pool \
 example/lookup \
 example/tcp \
 example/http \
-example/hello
+example/hello \
+example/timer
 
 example_pool_LDFLAGS = -lreactor -ldynamic
 example_lookup_LDFLAGS = -lreactor -ldynamic
 example_tcp_LDFLAGS = -lreactor -ldynamic
 example_http_LDFLAGS = -lreactor -ldynamic
 example_hello_LDFLAGS = -lreactor -ldynamic
+example_timer_LDFLAGS = -lreactor -ldynamic
 
 MAINTAINERCLEANFILES = aclocal.m4 config.h.in configure Makefile.in docs/Makefile.in libreactor-?.?.?.tar.gz
 maintainer-clean-local:; rm -rf autotools m4 libreactor-?.?.?
