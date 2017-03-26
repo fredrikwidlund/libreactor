@@ -36,7 +36,7 @@ install:
 
 branches:
   only:
-  - develop
+  - master
 
 script:
   - cd ${TRAVIS_BUILD_DIR}

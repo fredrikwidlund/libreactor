@@ -1,8 +1,0 @@
-Todo
-* add tcp options like defer_accept, quickack, nodelay, ...
-* stream write notify function
-* use refs for all dependencies
-* chunked data
-* streaming data
-* resolver
-* signal handling

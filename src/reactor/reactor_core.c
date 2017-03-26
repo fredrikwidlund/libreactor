@@ -1,114 +1,113 @@
+#define _GNU_SOURCE
+
 #include <stdio.h>
+#include <stdlib.h>
 #include <stdint.h>
-#include <string.h>
 #include <unistd.h>
 #include <poll.h>
+#include <sched.h>
+#include <sys/socket.h>
+#include <sys/queue.h>
+#include <err.h>
 
 #include <dynamic.h>
 
 #include "reactor_user.h"
-#include "reactor_desc.h"
+#include "reactor_pool.h"
 #include "reactor_core.h"
 
-static __thread reactor_core core = {.state = REACTOR_CORE_CLOSED};
-
-int reactor_core_open(void)
+typedef struct reactor_core reactor_core;
+struct reactor_core
 {
-  if (core.state != REACTOR_CORE_CLOSED)
-    return -1;
+  vector       polls;
+  vector       users;
+  reactor_pool pool;
+};
 
-  vector_init(&core.polls, sizeof(struct pollfd));
-  vector_init(&core.descs, sizeof(reactor_desc *));
-  core.state = REACTOR_CORE_OPEN;
-  return 0;
+static __thread struct reactor_core core = {0};
+
+static void reactor_core_grow(size_t size)
+{
+  size_t current;
+
+  current = vector_size(&core.polls);
+  if (size > current)
+    {
+      vector_insert_fill(&core.polls, current, size - current, (struct pollfd[]) {{.fd = -1}});
+      vector_insert_fill(&core.users, current, size - current, (reactor_user[]) {{0}});
+    }
+}
+
+static void reactor_core_shrink(void)
+{
+  while (vector_size(&core.polls) && (((struct pollfd *) vector_back(&core.polls))->fd == -1))
+    {
+      vector_pop_back(&core.polls);
+      vector_pop_back(&core.users);
+    }
+}
+
+void reactor_core_construct()
+{
+  vector_construct(&core.polls, sizeof (struct pollfd));
+  vector_construct(&core.users, sizeof (reactor_user));
+  reactor_pool_construct(&core.pool);
+}
+
+void reactor_core_destruct()
+{
+  reactor_pool_destruct(&core.pool);
+  vector_destruct(&core.polls);
+  vector_destruct(&core.users);
 }
 
 int reactor_core_run(void)
 {
-  struct pollfd *p;
-  size_t i;
   int e;
+  size_t i;
+  struct pollfd *pollfd;
 
-  core.state = REACTOR_CORE_RUNNING;
-  while (core.state == REACTOR_CORE_RUNNING && vector_size(&core.polls))
+  while (vector_size(&core.polls))
     {
       e = poll(vector_data(&core.polls), vector_size(&core.polls), -1);
       if (e == -1)
         return -1;
 
-      i = 0;
-      while (i < vector_size(&core.polls))
+      for (i = 0; i < vector_size(&core.polls); i ++)
         {
-          p = vector_at(&core.polls, i);
-          core.current = p->fd;
-          if (p->revents)
-            reactor_desc_event(*(reactor_desc **) vector_at(&core.descs, i), p->revents, NULL);
-          if (core.current != -1)
-            i ++;
+          pollfd = reactor_core_fd_poll(i);
+          if (pollfd->revents)
+            reactor_user_dispatch(vector_at(&core.users, i), REACTOR_CORE_EVENT_FD, pollfd);
         }
     }
-  core.state = REACTOR_CORE_OPEN;
+
   return 0;
 }
 
-void reactor_core_close(void)
+void reactor_core_fd_register(int fd, reactor_user_callback *callback, void *state, int events)
 {
-  vector_clear(&core.polls);
-  vector_clear(&core.descs);
-  core.state = REACTOR_CORE_CLOSED;
+  reactor_core_grow(fd + 1);
+  *(struct pollfd *) reactor_core_fd_poll(fd) = (struct pollfd) {.fd = fd, .events = events};
+  *(reactor_user *) reactor_core_fd_user(fd) = (reactor_user) {.callback = callback, .state = state};
 }
 
-int reactor_core_desc_add(reactor_desc *desc, int fd, int events)
+void reactor_core_fd_deregister(int fd)
 {
-  int e;
-
-  if (fd < 0)
-    return -1;
-
-  e = vector_push_back(&core.polls, (struct pollfd[]) {{.fd = fd, .events = events}});
-  if (e == -1)
-    return -1;
-
-  e = vector_push_back(&core.descs, &desc);
-  if (e == -1)
-    {
-      vector_pop_back(&core.polls);
-      return -1;
-    }
-
-  desc->index = vector_size(&core.polls) - 1;
-  return 0;
+  *(struct pollfd *) reactor_core_fd_poll(fd) = (struct pollfd) {.fd = -1};
+  reactor_core_shrink();
 }
 
-void reactor_core_desc_set(reactor_desc *desc, int events)
+void *reactor_core_fd_poll(int fd)
 {
-  ((struct pollfd *) vector_at(&core.polls, desc->index))->events |= events;
+  return vector_at(&core.polls, fd);
 }
 
-void reactor_core_desc_clear(reactor_desc *desc, int events)
+void *reactor_core_fd_user(int fd)
 {
-  ((struct pollfd *) vector_at(&core.polls, desc->index))->events &= ~events;
+  return vector_at(&core.users, fd);
 }
 
-int reactor_core_desc_fd(reactor_desc *desc)
+void reactor_core_job_register(reactor_user_callback *callback, void *state)
 {
-  return ((struct pollfd *) vector_at(&core.polls, desc->index))->fd;
-}
-
-void reactor_core_desc_remove(reactor_desc *desc)
-{
-  int last;
-
-  if (((struct pollfd *) vector_at(&core.polls, desc->index))->fd == core.current)
-    core.current = -1;
-  last = vector_size(&core.polls) - 1;
-  if (desc->index != last)
-    {
-      memcpy(vector_at(&core.polls, desc->index), vector_at(&core.polls, last), sizeof(struct pollfd));
-      memcpy(vector_at(&core.descs, desc->index), vector_at(&core.descs, last), sizeof(reactor_desc *));
-      (*(reactor_desc **) vector_at(&core.descs, desc->index))->index = desc->index;
-    }
-
-  vector_pop_back(&core.polls);
-  vector_pop_back(&core.descs);
+  reactor_pool_enqueue(&core.pool, callback, state);
 }

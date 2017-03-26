@@ -1,55 +1,107 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
-#include <errno.h>
+#include <string.h>
 #include <unistd.h>
 #include <fcntl.h>
 #include <netdb.h>
+#include <errno.h>
+#include <poll.h>
+#include <sys/types.h>
 #include <sys/socket.h>
-#include <netinet/tcp.h>
+#include <sys/queue.h>
 
 #include <dynamic.h>
 
 #include "reactor_user.h"
-#include "reactor_desc.h"
+#include "reactor_pool.h"
 #include "reactor_core.h"
+#include "reactor_resolver.h"
 #include "reactor_tcp.h"
 
-static void reactor_tcp_close_final(reactor_tcp *tcp)
+static void reactor_tcp_close_fd(reactor_tcp *tcp)
 {
-  tcp->state = REACTOR_TCP_CLOSED;
-  reactor_user_dispatch(&tcp->user, REACTOR_TCP_CLOSE, NULL);
+  if (tcp->socket >= 0)
+    {
+      reactor_core_fd_deregister(tcp->socket);
+      (void) close(tcp->socket);
+      tcp->socket = -1;
+    }
 }
 
-void reactor_tcp_init(reactor_tcp *tcp, reactor_user_callback *callback, void *state)
+static void reactor_tcp_error(reactor_tcp *tcp)
 {
-  *tcp = (reactor_tcp) {.state = REACTOR_TCP_CLOSED};
-  reactor_user_init(&tcp->user, callback, state);
-  reactor_desc_init(&tcp->desc, reactor_tcp_event, tcp);
+  tcp->state = REACTOR_TCP_STATE_ERROR;
+  reactor_user_dispatch(&tcp->user, REACTOR_TCP_EVENT_ERROR, NULL);
 }
 
-void reactor_tcp_error(reactor_tcp *tcp)
+static void reactor_tcp_socket_event(void *state, int type, void *data)
 {
-  tcp->state = REACTOR_TCP_INVALID;
-  reactor_user_dispatch(&tcp->user, REACTOR_TCP_ERROR, NULL);
+  reactor_tcp *tcp = state;
+  short revents = ((struct pollfd *) data)->revents;
+  int s;
+
+  (void) type;
+  if (revents & (POLLERR | POLLNVAL | POLLHUP))
+    reactor_tcp_error(tcp);
+  else if (revents & POLLIN)
+    {
+      s = accept(tcp->socket, NULL, NULL);
+      if (s >= 0)
+        reactor_user_dispatch(&tcp->user, REACTOR_TCP_EVENT_ACCEPT, &s);
+      else
+        reactor_tcp_error(tcp);
+    }
+  else if (revents & POLLOUT)
+    reactor_user_dispatch(&tcp->user, REACTOR_TCP_EVENT_CONNECT, &tcp->socket);
 }
 
-void reactor_tcp_close(reactor_tcp *tcp)
+static void reactor_tcp_connect(reactor_tcp *tcp, struct addrinfo *addrinfo)
 {
-  if (tcp->state != REACTOR_TCP_OPEN && tcp->state != REACTOR_TCP_INVALID)
+  int s, e;
+
+  s = socket(addrinfo->ai_family, addrinfo->ai_socktype, addrinfo->ai_protocol);
+  if (s == -1)
+    {
+      reactor_tcp_error(tcp);
       return;
+    }
 
-  reactor_desc_close(&tcp->desc);
+  e = fcntl(s, F_SETFL, O_NONBLOCK);
+  if (e == -1)
+    {
+      (void) close(s);
+      reactor_tcp_error(tcp);
+      return;
+    }
+
+  e = connect(s, addrinfo->ai_addr, addrinfo->ai_addrlen);
+  if (e == -1 && errno != EINPROGRESS)
+    {
+      (void) close(s);
+      reactor_tcp_error(tcp);
+      return;
+    }
+
+  tcp->socket = s;
+  reactor_core_fd_register(tcp->socket, reactor_tcp_socket_event, tcp, POLLOUT);
 }
 
-static void reactor_tcp_listen(reactor_tcp *tcp, struct addrinfo *ai, int s)
+
+static void reactor_tcp_listen(reactor_tcp *tcp, struct addrinfo *addrinfo)
 {
-  int e;
+  int s, e;
+
+  s = socket(addrinfo->ai_family, addrinfo->ai_socktype, addrinfo->ai_protocol);
+  if (s == -1)
+    {
+      reactor_tcp_error(tcp);
+      return;
+    }
 
   (void) setsockopt(s, SOL_SOCKET, SO_REUSEPORT, (int[]){1}, sizeof(int));
   (void) setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (int[]){1}, sizeof(int));
 
-  e = bind(s, ai->ai_addr, ai->ai_addrlen);
+  e = bind(s, addrinfo->ai_addr, addrinfo->ai_addrlen);
   if (e == -1)
     {
       (void) close(s);
@@ -65,102 +117,75 @@ static void reactor_tcp_listen(reactor_tcp *tcp, struct addrinfo *ai, int s)
       return;
     }
 
-  reactor_desc_open(&tcp->desc, s, REACTOR_DESC_FLAGS_READ);
+  tcp->socket = s;
+  reactor_core_fd_register(tcp->socket, reactor_tcp_socket_event, tcp, POLLIN);
 }
 
-static void reactor_tcp_connect(reactor_tcp *tcp, struct addrinfo *ai, int s)
+static void reactor_tcp_resolve_event(void *state, int type, void *data)
 {
-  int e;
+  reactor_tcp *tcp = state;
 
-  e = connect(s, ai->ai_addr, ai->ai_addrlen);
-  if (e == -1 && errno != EINPROGRESS)
+  switch (type)
     {
-      (void) close(s);
+    case REACTOR_RESOLVER_EVENT_RESULT:
+      if (!data)
+        reactor_tcp_error(tcp);
+      else if (tcp->flags & REACTOR_TCP_FLAG_SERVER)
+        reactor_tcp_listen(tcp, data);
+      else
+        reactor_tcp_connect(tcp, data);
+      break;
+    case REACTOR_RESOLVER_EVENT_ERROR:
       reactor_tcp_error(tcp);
-      return;
+      break;
+    case REACTOR_RESOLVER_EVENT_CLOSE:
+      free(tcp->resolver);
+      tcp->resolver = NULL;
+      reactor_tcp_release(tcp);
+      break;
     }
-
-  reactor_desc_open(&tcp->desc, s, REACTOR_DESC_FLAGS_WRITE);
-}
-
-static void reactor_tcp_socket(reactor_tcp *tcp, struct addrinfo *ai)
-{
-  int s, e;
-
-  s = socket(ai->ai_family, ai->ai_socktype, ai->ai_protocol);
-  if (s == -1)
-    {
-      reactor_tcp_error(tcp);
-      return;
-    }
-
-  e = fcntl(s, F_SETFL, O_NONBLOCK);
-  if (e == -1)
-    {
-      (void) close(s);
-      reactor_tcp_error(tcp);
-      return;
-    }
-
-  (tcp->flags & REACTOR_TCP_SERVER ? reactor_tcp_listen : reactor_tcp_connect)(tcp, ai, s);
 }
 
 static void reactor_tcp_resolve(reactor_tcp *tcp, char *node, char *service)
 {
-  struct addrinfo *ai, hints = {.ai_family = AF_INET, .ai_socktype = SOCK_STREAM};
-  int e;
-
-  hints.ai_flags = tcp->flags & REACTOR_TCP_SERVER ? AI_PASSIVE : 0;
-  e = getaddrinfo(node, service, &hints, &ai);
-  if (e != 0 || !ai)
-    {
-      reactor_tcp_error(tcp);
-      return;
-    }
-
-  reactor_tcp_socket(tcp, ai);
-  freeaddrinfo(ai);
+  reactor_tcp_hold(tcp);
+  tcp->resolver = malloc(sizeof *tcp->resolver);
+  reactor_resolver_open(tcp->resolver, reactor_tcp_resolve_event, tcp, node, service, NULL);
 }
 
-void reactor_tcp_open(reactor_tcp *tcp, char *node, char *service, int flags)
+void reactor_tcp_hold(reactor_tcp *tcp)
 {
-  if (tcp->state != REACTOR_TCP_CLOSED)
+  tcp->ref ++;
+}
+
+void reactor_tcp_release(reactor_tcp *tcp)
+{
+  tcp->ref --;
+  if (!tcp->ref)
     {
-      reactor_tcp_error(tcp);
-      return;
+      tcp->state = REACTOR_TCP_STATE_CLOSED;
+      reactor_user_dispatch(&tcp->user, REACTOR_TCP_EVENT_CLOSE, NULL);
     }
+}
+
+void reactor_tcp_open(reactor_tcp *tcp, reactor_user_callback *callback, void *state,
+                      char *node, char *service, int flags)
+{
+  tcp->ref = 0;
+  tcp->state = REACTOR_TCP_STATE_RESOLVING;
+  reactor_user_construct(&tcp->user, callback, state);
+  tcp->socket = -1;
   tcp->flags = flags;
-  tcp->state = REACTOR_TCP_OPEN;
+  reactor_tcp_hold(tcp);
   reactor_tcp_resolve(tcp, node, service);
 }
 
-void reactor_tcp_event(void *state, int type, void *data)
+void reactor_tcp_close(reactor_tcp *tcp)
 {
-  reactor_tcp *tcp = state;
-  int s;
+  if (tcp->state & (REACTOR_TCP_STATE_CLOSED | REACTOR_TCP_STATE_CLOSING))
+    return;
 
-  (void) data;
-  switch (type)
-    {
-    case REACTOR_DESC_WRITE:
-      s = dup(reactor_desc_fd(&tcp->desc));
-      reactor_desc_close(&tcp->desc);
-      reactor_user_dispatch(&tcp->user, REACTOR_TCP_CONNECT, &s);
-      break;
-    case REACTOR_DESC_READ:
-      s = accept(reactor_desc_fd(&tcp->desc), NULL, NULL);
-      if (s == -1)
-        {
-          reactor_tcp_error(tcp);
-          return;
-        }
-      reactor_user_dispatch(&tcp->user, REACTOR_TCP_ACCEPT, &s);
-      break;
-    case REACTOR_DESC_SHUTDOWN:
-      reactor_user_dispatch(&tcp->user, REACTOR_TCP_ERROR, NULL);
-      break;
-    case REACTOR_DESC_CLOSE:
-      reactor_tcp_close_final(tcp);
-      break;
-    }
+  tcp->state = REACTOR_TCP_STATE_CLOSING;
+  reactor_tcp_close_fd(tcp);
+  reactor_tcp_release(tcp);
 }

@@ -7,59 +7,50 @@
 
 enum reactor_stream_state
 {
-  REACTOR_STREAM_CLOSED,
-  REACTOR_STREAM_OPEN,
-  REACTOR_STREAM_LINGER,
-  REACTOR_STREAM_INVALID,
-  REACTOR_STREAM_CLOSE_WAIT,
+  REACTOR_STREAM_STATE_CLOSED  = 0x01,
+  REACTOR_STREAM_STATE_CLOSING = 0x02,
+  REACTOR_STREAM_STATE_OPEN    = 0x04,
+  REACTOR_STREAM_STATE_ERROR   = 0x08
 };
 
-enum reactor_stream_events
+enum reactor_stream_event
 {
-  REACTOR_STREAM_ERROR,
-  REACTOR_STREAM_READ,
-  REACTOR_STREAM_WRITE_BLOCKED,
-  REACTOR_STREAM_WRITE_AVAILABLE,
-  REACTOR_STREAM_SHUTDOWN,
-  REACTOR_STREAM_CLOSE
-};
-
-enum reactor_stream_flags
-{
-  REACTOR_STREAM_FLAGS_BLOCKED = 0x01
+  REACTOR_STREAM_EVENT_ERROR,
+  REACTOR_STREAM_EVENT_READ,
+  REACTOR_STREAM_EVENT_BLOCKED,
+  REACTOR_STREAM_EVENT_WRITE,
+  REACTOR_STREAM_EVENT_HANGUP,
+  REACTOR_STREAM_EVENT_CLOSE
 };
 
 typedef struct reactor_stream reactor_stream;
 struct reactor_stream
 {
-  int           state;
-  int           flags;
+  short         ref;
+  short         state;
   reactor_user  user;
-  reactor_desc  desc;
+  int           fd;
   buffer        input;
   buffer        output;
-  int           ref;
 };
 
 typedef struct reactor_stream_data reactor_stream_data;
 struct reactor_stream_data
 {
-  char         *base;
+  void         *base;
   size_t        size;
 };
 
-void   reactor_stream_init(reactor_stream *, reactor_user_callback *, void *);
-void   reactor_stream_open(reactor_stream *, int);
-void   reactor_stream_close(reactor_stream *);
-void   reactor_stream_shutdown(reactor_stream *);
-void   reactor_stream_event(void *, int, void *);
-void   reactor_stream_error(reactor_stream *);
-void   reactor_stream_read(reactor_stream *);
-void   reactor_stream_write(reactor_stream *, void *, size_t);
-void   reactor_stream_write_direct(reactor_stream *, void *, size_t);
-void   reactor_stream_write_string(reactor_stream *, char *);
-void   reactor_stream_write_unsigned(reactor_stream *, uint32_t);
-void   reactor_stream_flush(reactor_stream *);
-void   reactor_stream_consume(reactor_stream_data *, size_t);
+void    reactor_stream_hold(reactor_stream *);
+void    reactor_stream_release(reactor_stream *);
+void    reactor_stream_open(reactor_stream *, reactor_user_callback *, void *, int);
+void    reactor_stream_close(reactor_stream *);
+void    reactor_stream_write(reactor_stream *, void *, size_t);
+void    reactor_stream_write_unsigned(reactor_stream *, uint32_t);
+void    reactor_stream_flush(reactor_stream *);
+void    reactor_stream_write_notify(reactor_stream *);
+void   *reactor_stream_data_base(reactor_stream_data *);
+size_t  reactor_stream_data_size(reactor_stream_data *);
+void    reactor_stream_data_consume(reactor_stream_data *, size_t);
 
 #endif /* REACTOR_STREAM_H_INCLUDED */

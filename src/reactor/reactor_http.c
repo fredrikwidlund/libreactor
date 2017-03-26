@@ -1,334 +1,214 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <string.h>
-#include <errno.h>
 #include <unistd.h>
+#include <fcntl.h>
 #include <netdb.h>
+#include <errno.h>
+#include <poll.h>
+#include <sys/types.h>
 #include <sys/socket.h>
-#include <netinet/tcp.h>
+#include <sys/queue.h>
 
 #include <dynamic.h>
 
-#include "picohttpparser/picohttpparser.h"
 #include "reactor_user.h"
-#include "reactor_desc.h"
+#include "reactor_pool.h"
 #include "reactor_core.h"
+#include "reactor_resolver.h"
 #include "reactor_stream.h"
 #include "reactor_tcp.h"
+#include "reactor_http_parser.h"
 #include "reactor_http.h"
 
-static inline void reactor_http_close_final(reactor_http *http)
+static void reactor_http_error(reactor_http *http)
 {
-  if (http->state == REACTOR_HTTP_CLOSE_WAIT &&
-      http->tcp.state == REACTOR_TCP_CLOSED &&
-      http->ref == 0)
+  reactor_user_dispatch(&http->user, REACTOR_HTTP_EVENT_ERROR, NULL);
+}
+
+static void reactor_http_client_event(void *state, int type, void *data)
+{
+  reactor_http *http = state;
+  reactor_http_header headers[REACTOR_HTTP_HEADERS_MAX];
+  reactor_http_response response;
+  int e;
+
+  switch (type)
     {
-      http->state = REACTOR_HTTP_CLOSED;
-      reactor_user_dispatch(&http->user, REACTOR_HTTP_CLOSE, NULL);
+    case REACTOR_STREAM_EVENT_READ:
+      while (reactor_stream_data_size(data))
+        {
+          response.header_count = REACTOR_HTTP_HEADERS_MAX;
+          response.headers = headers;
+          e = reactor_http_parser_read_response(&http->parser, &response, data);
+          if (e == -1)
+            {
+              reactor_http_error(http);
+              break;
+            }
+
+          if (e == 0)
+            break;
+
+          reactor_user_dispatch(&http->user, REACTOR_HTTP_EVENT_RESPONSE, &response);
+        }
+      break;
+    case REACTOR_STREAM_EVENT_ERROR:
+      reactor_http_error(http);
+      break;
+    case REACTOR_STREAM_EVENT_HANGUP:
+      reactor_user_dispatch(&http->user, REACTOR_HTTP_EVENT_HANGUP, NULL);
+      break;
+    case REACTOR_STREAM_EVENT_CLOSE:
+      reactor_http_release(http);
     }
 }
 
-static inline void reactor_http_hold(reactor_http *http)
+static void reactor_http_server_event(void *state, int type, void *data)
+{
+  reactor_http *http = state;
+  reactor_http_header headers[REACTOR_HTTP_HEADERS_MAX];
+  reactor_http_request request;
+  int e;
+
+  switch (type)
+    {
+    case REACTOR_STREAM_EVENT_READ:
+      while (reactor_stream_data_size(data))
+        {
+          request.header_count = REACTOR_HTTP_HEADERS_MAX;
+          request.headers = headers;
+          e = reactor_http_parser_read_request(&http->parser, &request, data);
+          if (e == -1)
+            {
+              reactor_http_error(http);
+              break;
+            }
+
+          if (e == 0)
+            break;
+
+          reactor_user_dispatch(&http->user, REACTOR_HTTP_EVENT_REQUEST, &request);
+        }
+      reactor_http_flush(http);
+      break;
+    case REACTOR_STREAM_EVENT_ERROR:
+      reactor_http_error(http);
+      break;
+    case REACTOR_STREAM_EVENT_HANGUP:
+      reactor_user_dispatch(&http->user, REACTOR_HTTP_EVENT_HANGUP, NULL);
+      break;
+    case REACTOR_STREAM_EVENT_CLOSE:
+      reactor_http_release( http);
+    }
+}
+
+void reactor_http_hold(reactor_http *http)
 {
   http->ref ++;
 }
 
-static inline void reactor_http_release(reactor_http *http)
+void reactor_http_release(reactor_http *http)
 {
   http->ref --;
-  reactor_http_close_final(http);
-}
-
-void reactor_http_init(reactor_http *http, reactor_user_callback *callback, void *state)
-{
-  *http = (reactor_http) {.state = REACTOR_HTTP_CLOSED};
-  reactor_user_init(&http->user, callback, state);
-  reactor_tcp_init(&http->tcp, reactor_http_event, http);
-}
-
-void reactor_http_open(reactor_http *http, char *node, char *service, int flags)
-{
-  if (http->state != REACTOR_HTTP_CLOSED)
+  if (!http->ref)
     {
-      reactor_http_error(http);
-      return;
+      http->state = REACTOR_HTTP_STATE_CLOSED;
+      reactor_user_dispatch(&http->user, REACTOR_HTTP_EVENT_CLOSE, NULL);
     }
-
-  http->flags = flags;
-  http->state = REACTOR_HTTP_OPEN;
-  reactor_tcp_open(&http->tcp, node, service, flags & REACTOR_HTTP_SERVER ? REACTOR_TCP_SERVER : 0);
 }
 
-void reactor_http_error(reactor_http *http)
+void reactor_http_open(reactor_http *http, reactor_user_callback *callback, void *state, int socket, int flags)
 {
-  http->state = REACTOR_HTTP_INVALID;
-  reactor_user_dispatch(&http->user, REACTOR_HTTP_ERROR, NULL);
+  http->ref = 0;
+  http->state = REACTOR_HTTP_STATE_OPEN;
+  http->flags = flags;
+  reactor_user_construct(&http->user, callback, state);
+  reactor_http_parser_construct(&http->parser);
+  reactor_http_hold(http);
+  reactor_stream_open(&http->stream, flags & REACTOR_HTTP_FLAG_SERVER ?
+                      reactor_http_server_event : reactor_http_client_event, http, socket);
 }
 
 void reactor_http_close(reactor_http *http)
 {
-  if (http->state == REACTOR_HTTP_CLOSED)
+  if (http->state & (REACTOR_HTTP_STATE_CLOSED | REACTOR_HTTP_STATE_CLOSING))
     return;
 
-  reactor_tcp_close(&http->tcp);
-  http->state = REACTOR_HTTP_CLOSE_WAIT;
-  reactor_http_close_final(http);
+  http->state = REACTOR_HTTP_STATE_CLOSING;
+  reactor_stream_close(&http->stream);
 }
 
-void reactor_http_event(void *state, int type, void *data)
+void reactor_http_write_request(reactor_http *http, reactor_http_request *request)
 {
-  reactor_http *http = state;
-  reactor_http_session *session;
-  int s = *(int *) data;
-
-  switch (type)
-    {
-    case REACTOR_TCP_CONNECT:
-    case REACTOR_TCP_ACCEPT:
-      reactor_http_session_new(&session, http);
-      if (!session)
-        {
-          (void) close(s);
-          reactor_http_error(http);
-          return;
-        };
-      reactor_http_hold(http);
-      reactor_stream_init(&session->stream, reactor_http_session_event, session);
-      reactor_stream_open(&session->stream, s);
-      if (http->state == REACTOR_HTTP_OPEN)
-        reactor_user_dispatch(&http->user, REACTOR_HTTP_SESSION, session);
-      reactor_http_release(http);
-      break;
-    case REACTOR_TCP_SHUTDOWN:
-      reactor_user_dispatch(&http->user, REACTOR_HTTP_SHUTDOWN, NULL);
-      break;
-    case REACTOR_TCP_ERROR:
-      reactor_http_error(http);
-      break;
-    case REACTOR_TCP_CLOSE:
-      reactor_http_close_final(http);
-      break;
-    }
+  reactor_http_write_request_line(http, request->method, request->path, request->version);
+  reactor_http_write_headers(http, request->headers, request->header_count);
+  if (request->size)
+    reactor_http_write_content_length(http, request->size);
+  reactor_http_write_end(http);
+  if (request->size)
+    reactor_http_write_body(http, request->data, request->size);
 }
 
-static inline void reactor_http_session_close_final(reactor_http_session *session)
+void reactor_http_write_response(reactor_http *http, reactor_http_response *response)
 {
-  reactor_http *http;
-
-  if (session->state == REACTOR_HTTP_SESSION_CLOSE_WAIT &&
-      session->stream.state == REACTOR_STREAM_CLOSED &&
-      session->ref == 0)
-    {
-      http = session->http;
-      free(session);
-      http->ref --;
-      reactor_http_close_final(http);
-    }
+  reactor_http_write_status_line(http, response->version, response->status, response->reason);
+  reactor_http_write_headers(http, response->headers, response->header_count);
+  reactor_http_write_content_length(http, response->size);
+  reactor_http_write_end(http);
+  if (response->size)
+    reactor_http_write_body(http, response->data, response->size);
 }
 
-static inline void reactor_http_session_hold(reactor_http_session *session)
+void reactor_http_write_request_line(reactor_http *http, char *method, char *path, int version)
 {
-  session->ref ++;
+  reactor_stream_write(&http->stream, method, strlen(method));
+  reactor_stream_write(&http->stream, " ", 1);
+  reactor_stream_write(&http->stream, path, strlen(path));
+  reactor_stream_write(&http->stream, " ", 1);
+  reactor_stream_write(&http->stream, version ? "HTTP/1.1\r\n" : "HTTP/1.0\r\n", 10);
 }
 
-static inline void reactor_http_session_release(reactor_http_session *session)
+void reactor_http_write_status_line(reactor_http *http, int version, int status, char *reason)
 {
-  session->ref --;
-  reactor_http_session_close_final(session);
+  reactor_stream_write(&http->stream, version ? "HTTP/1.1 " : "HTTP/1.0 ", 9);
+  reactor_stream_write_unsigned(&http->stream, status);
+  reactor_stream_write(&http->stream, " ", 1);
+  reactor_stream_write(&http->stream, reason, strlen(reason));
+  reactor_stream_write(&http->stream, "\r\n", 2);
 }
 
-static inline void reactor_http_session_update_reference(char **reference, off_t offset)
+void reactor_http_write_headers(reactor_http *http, reactor_http_header *headers, size_t count)
 {
-  *reference += offset;
-}
-
-static inline void reactor_http_session_update(reactor_http_session *session, off_t offset)
-{
-  reactor_http_message *message = &session->message;
   size_t i;
 
-  reactor_http_session_update_reference((char **) &session->message_base, offset);
-  if (message->type == REACTOR_HTTP_MESSAGE_REQUEST)
+  for (i = 0; i < count; i ++)
     {
-      reactor_http_session_update_reference(&message->method, offset);
-      reactor_http_session_update_reference(&message->path, offset);
-    }
-  else
-    {
-      reactor_http_session_update_reference(&message->reason, offset);
-    }
-  for (i = 0; i < message->header_size; i ++)
-    {
-      reactor_http_session_update_reference(&message->header[i].name, offset);
-      reactor_http_session_update_reference(&message->header[i].value, offset);
+      reactor_stream_write(&http->stream, headers[i].name, strlen(headers[i].name));
+      reactor_stream_write(&http->stream, ": ", 2);
+      reactor_stream_write(&http->stream, headers[i].value, strlen(headers[i].value));
+      reactor_stream_write(&http->stream, "\r\n", 2);
     }
 }
 
-static inline void reactor_http_session_parse(reactor_http_session *session, reactor_stream_data *data)
+void reactor_http_write_content_length(reactor_http *http, size_t size)
 {
-  struct phr_header header[REACTOR_HTTP_MAX_HEADERS];
-  reactor_http_message *message = &session->message;
-  size_t method_size = 0, reason_size = 0, path_size = 0, i;
-  int n;
-
-  message->header_size = REACTOR_HTTP_MAX_HEADERS;
-  if (message->type == REACTOR_HTTP_MESSAGE_REQUEST)
-    n = phr_parse_request(data->base, data->size,
-                          (const char **) &message->method, &method_size,
-                          (const char **) &message->path, &path_size,
-                          &message->version,
-                          header, &message->header_size, 0);
-  else
-    n = phr_parse_response(data->base, data->size,
-                           &message->version,
-                           &message->status,
-                           (const char **) &message->reason, &reason_size,
-                           header, &message->header_size, 0);
-  if (n == -1)
-    reactor_http_session_error(session);
-  if (n <= 0)
-    return;
-
-  session->message_base = data->base;
-  session->body_offset = n;
-  message->body_size = 0;
-  message->header = session->header_storage;
-  for (i = 0; i < message->header_size; i ++)
-    {
-      message->header[i].name = (char *) header[i].name;
-      message->header[i].name[header[i].name_len] = 0;
-      message->header[i].value = (char *) header[i].value;
-      message->header[i].value[header[i].value_len] = 0;
-      if (strcasecmp(message->header[i].name, "Content-Length") == 0)
-        message->body_size = strtoul(message->header[i].value, NULL, 0);
-    }
-  if (session->body_offset + message->body_size < session->body_offset)
-    reactor_http_session_error(session);
-  if (message->type == REACTOR_HTTP_MESSAGE_REQUEST)
-    {
-      message->method[method_size] = 0;
-      message->path[path_size] = 0;
-    }
-  else
-    {
-      message->reason[reason_size] = 0;
-    }
+  reactor_stream_write(&http->stream, "Content-Length: ", 16);
+  reactor_stream_write_unsigned(&http->stream, size);
+  reactor_stream_write(&http->stream, "\r\n", 2);
 }
 
-static inline void reactor_http_session_read(reactor_http_session *session, reactor_stream_data *data)
+void reactor_http_write_end(reactor_http *http)
 {
-  size_t size;
-
-  reactor_http_session_hold(session);
-  while (data->size)
-    {
-      if (!session->message_base)
-        {
-          reactor_http_session_parse(session, data);
-          if (!session->message_base || session->state != REACTOR_HTTP_SESSION_OPEN)
-            break;
-        }
-      size = session->body_offset + session->message.body_size;
-      if (data->size < size)
-        break;
-      session->message.body = (char *) data->base + session->body_offset;
-      if (data->base != session->message_base)
-        reactor_http_session_update(session, (char *) data->base - (char *) session->message_base);
-      reactor_user_dispatch(&session->http->user, REACTOR_HTTP_MESSAGE, session);
-      if (session->state != REACTOR_HTTP_SESSION_OPEN)
-        break;
-      reactor_stream_consume(data, size);
-      session->message_base = NULL;
-    }
-  reactor_http_session_release(session);
+  reactor_stream_write(&http->stream, "\r\n", 2);
 }
 
-void reactor_http_session_new(reactor_http_session **session, reactor_http *http)
+void reactor_http_write_body(reactor_http *http, void *base, size_t size)
 {
-  *session = malloc(sizeof **session);
-  if (!*session)
-    return;
-  **session = (reactor_http_session)
-    {
-      .state = REACTOR_HTTP_SESSION_OPEN,
-      .http = http,
-      .message.type = http->flags & REACTOR_HTTP_SERVER ? REACTOR_HTTP_MESSAGE_REQUEST : REACTOR_HTTP_MESSAGE_RESPONSE,
-    };
-  http->ref ++;
+  reactor_stream_write(&http->stream, base, size);
 }
 
-void reactor_http_session_error(reactor_http_session *session)
+void reactor_http_flush(reactor_http *http)
 {
-  reactor_user_dispatch(&session->http->user, REACTOR_STREAM_ERROR, NULL);
-  reactor_http_session_close(session);
-}
-
-void reactor_http_session_close(reactor_http_session *session)
-{
-  if (session->state == REACTOR_HTTP_SESSION_CLOSED)
-    return;
-
-  reactor_stream_close(&session->stream);
-  session->state = REACTOR_HTTP_SESSION_CLOSE_WAIT;
-  reactor_http_session_close_final(session);
-}
-
-void reactor_http_session_event(void *state, int type, void *data)
-{
-  reactor_http_session *session = state;
-  reactor_stream_data *read = data;
-
-  switch (type)
-    {
-    case REACTOR_STREAM_READ:
-      reactor_http_session_read(session, read);
-      break;
-    case REACTOR_STREAM_ERROR:
-      reactor_http_session_error(session);
-      break;
-    case REACTOR_STREAM_SHUTDOWN:
-      reactor_http_session_close(session);
-      break;
-    case REACTOR_STREAM_CLOSE:
-      reactor_http_session_close_final(session);
-    }
-}
-
-void reactor_http_session_message(reactor_http_session *session, reactor_http_message *message)
-{
-  reactor_stream *stream = &session->stream;
-  size_t i;
-
-  if (message->type == REACTOR_HTTP_MESSAGE_REQUEST)
-    {
-      reactor_stream_write_string(stream, message->method);
-      reactor_stream_write_string(stream, " ");
-      reactor_stream_write_string(stream, message->path);
-      reactor_stream_write_string(stream, " ");
-      reactor_stream_write_string(stream, message->version ? "HTTP/1.1\r\n" : "HTTP/1.0\r\n");
-    }
-  else
-    {
-      reactor_stream_write_string(stream, message->version ? "HTTP/1.1 " : "HTTP/1.0 ");
-      reactor_stream_write_unsigned(stream, message->status);
-      reactor_stream_write_string(stream, " ");
-      reactor_stream_write_string(stream, message->reason);
-      reactor_stream_write_string(stream, "\r\n");
-    }
-  for (i = 0; i < message->header_size; i ++)
-    {
-      reactor_stream_write_string(stream, message->header[i].name);
-      reactor_stream_write_string(stream, ": ");
-      reactor_stream_write_string(stream, message->header[i].value);
-      reactor_stream_write_string(stream, "\r\n");
-    }
-  if (message->type == REACTOR_HTTP_MESSAGE_RESPONSE || message->body_size)
-    {
-      reactor_stream_write_string(stream, "Content-Length: ");
-      reactor_stream_write_unsigned(stream, message->body_size);
-      reactor_stream_write_string(stream, "\r\n");
-    }
-  reactor_stream_write_string(stream, "\r\n");
-  reactor_stream_write(stream, message->body, message->body_size);
+  reactor_stream_flush(&http->stream);
 }

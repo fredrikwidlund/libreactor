@@ -1,38 +1,29 @@
 #ifndef REACTOR_HTTP_H_INCLUDED
 #define REACTOR_HTTP_H_INCLUDED
 
-#define REACTOR_HTTP_MAX_HEADERS 32
+#ifndef REACTOR_HTTP_HEADERS_MAX
+#define REACTOR_HTTP_HEADERS_MAX 32
+#endif
 
 enum reactor_http_state
 {
-  REACTOR_HTTP_CLOSED,
-  REACTOR_HTTP_OPEN,
-  REACTOR_HTTP_CLOSE_WAIT,
-  REACTOR_HTTP_INVALID
+  REACTOR_HTTP_STATE_CLOSED     = 0x01,
+  REACTOR_HTTP_STATE_CLOSING    = 0x02,
+  REACTOR_HTTP_STATE_OPEN       = 0x04
 };
 
-enum reactor_http_events
+enum reactor_http_event
 {
-  REACTOR_HTTP_ERROR,
-  REACTOR_HTTP_SESSION,
-  REACTOR_HTTP_MESSAGE,
-  REACTOR_HTTP_SHUTDOWN,
-  REACTOR_HTTP_CLOSE
+  REACTOR_HTTP_EVENT_ERROR,
+  REACTOR_HTTP_EVENT_REQUEST,
+  REACTOR_HTTP_EVENT_RESPONSE,
+  REACTOR_HTTP_EVENT_HANGUP,
+  REACTOR_HTTP_EVENT_CLOSE
 };
 
-enum reactor_http_flags
+enum reactor_http_flag
 {
-  REACTOR_HTTP_SERVER = 0x01
-};
-
-typedef struct reactor_http reactor_http;
-struct reactor_http
-{
-  int                   state;
-  int                   flags;
-  int                   ref;
-  reactor_user          user;
-  reactor_tcp           tcp;
+  REACTOR_HTTP_FLAG_SERVER = 0x01
 };
 
 typedef struct reactor_http_header reactor_http_header;
@@ -42,75 +33,53 @@ struct reactor_http_header
   char                 *value;
 };
 
-enum reactor_http_message_type
+typedef struct reactor_http reactor_http;
+struct reactor_http
 {
-  REACTOR_HTTP_MESSAGE_REQUEST,
-  REACTOR_HTTP_MESSAGE_RESPONSE
+  int                  ref;
+  int                  state;
+  int                  flags;
+  reactor_user         user;
+  reactor_stream       stream;
+  reactor_http_parser  parser;
 };
 
-typedef struct reactor_http_message reactor_http_message;
-struct reactor_http_message
+typedef struct reactor_http_request reactor_http_request;
+struct reactor_http_request
 {
-  int                   type;
-  int                   version;
-  union
-  {
-    struct
-    {
-      char             *method;
-      char             *path;
-    };
-    struct
-    {
-      int               status;
-      char             *reason;
-    };
-  };
-  size_t                header_size;
-  reactor_http_header  *header;
-  size_t                body_size;
-  void                 *body;
+  char                *method;
+  char                *path;
+  int                  version;
+  size_t               header_count;
+  reactor_http_header *headers;
+  void                *data;
+  size_t               size;
 };
 
-enum reactor_http_session_state
+typedef struct reactor_http_response reactor_http_response;
+struct reactor_http_response
 {
-  REACTOR_HTTP_SESSION_CLOSED,
-  REACTOR_HTTP_SESSION_OPEN,
-  REACTOR_HTTP_SESSION_CLOSE_WAIT
+  int                  version;
+  int                  status;
+  char                *reason;
+  size_t               header_count;
+  reactor_http_header *headers;
+  void                *data;
+  size_t               size;
 };
 
-enum reactor_http_session_flags
-{
-  REACTOR_HTTP_MESSAGE_CHUNKED = 0x01
-};
-
-typedef struct reactor_http_session reactor_http_session;
-struct reactor_http_session
-{
-  int                   state;
-  int                   flags;
-  int                   ref;
-  reactor_http         *http;
-  reactor_stream        stream;
-  reactor_http_message  message;
-  void                 *message_base;
-  size_t                body_offset;
-  reactor_http_header   header_storage[REACTOR_HTTP_MAX_HEADERS];
-};
-
-void reactor_http_init(reactor_http *, reactor_user_callback *, void *);
-void reactor_http_open(reactor_http *, char *, char *, int);
-void reactor_http_error(reactor_http *);
+void reactor_http_hold(reactor_http *);
+void reactor_http_release(reactor_http *);
+void reactor_http_open(reactor_http *, reactor_user_callback *, void *, int , int);
 void reactor_http_close(reactor_http *);
-void reactor_http_event(void *, int, void *);
-
-reactor_http_message reactor_http_message_text(char *);
-
-void reactor_http_session_new(reactor_http_session **, reactor_http *);
-void reactor_http_session_init(reactor_http_session *, reactor_http *);
-void reactor_http_session_error(reactor_http_session *);
-void reactor_http_session_close(reactor_http_session *);
-void reactor_http_session_event(void *, int, void *);
-void reactor_http_session_message(reactor_http_session *, reactor_http_message *);
+void reactor_http_write_request(reactor_http *, reactor_http_request *);
+void reactor_http_write_response(reactor_http *, reactor_http_response *);
+void reactor_http_write_request_line(reactor_http *, char *, char *, int);
+void reactor_http_write_status_line(reactor_http *, int, int, char *);
+void reactor_http_write_headers(reactor_http *, reactor_http_header *, size_t);
+void reactor_http_write_content_length(reactor_http *, size_t);
+void reactor_http_write_end(reactor_http *);
+void reactor_http_write_body(reactor_http *, void *, size_t);
+void reactor_http_flush(reactor_http *);
 
 #endif /* REACTOR_HTTP_H_INCLUDED */

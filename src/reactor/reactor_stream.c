@@ -1,225 +1,138 @@
-#include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <string.h>
-#include <unistd.h>
+#include <poll.h>
+#include <fcntl.h>
 #include <errno.h>
+#include <unistd.h>
+#include <sys/param.h>
 #include <sys/socket.h>
+#include <sys/queue.h>
 
 #include <dynamic.h>
 
 #include "reactor_user.h"
-#include "reactor_desc.h"
+#include "reactor_pool.h"
 #include "reactor_core.h"
 #include "reactor_stream.h"
 
-static inline void reactor_stream_close_final(reactor_stream *stream)
+static void reactor_stream_close_fd(reactor_stream *stream)
 {
-  if (stream->state == REACTOR_STREAM_CLOSE_WAIT &&
-      stream->desc.state == REACTOR_DESC_CLOSED &&
-      stream->ref == 0)
-    {
-      buffer_clear(&stream->input);
-      buffer_clear(&stream->output);
-      stream->state = REACTOR_STREAM_CLOSED;
-      reactor_user_dispatch(&stream->user, REACTOR_STREAM_CLOSE, NULL);
-    }
+  reactor_core_fd_deregister(stream->fd);
+  (void) close(stream->fd);
+  stream->fd = -1;
 }
 
-static inline void reactor_stream_hold(reactor_stream *stream)
+static void reactor_stream_error(reactor_stream *stream)
+{
+  ((struct pollfd *) reactor_core_fd_poll(stream->fd))->events = 0;
+  stream->state = REACTOR_STREAM_STATE_ERROR;
+  reactor_user_dispatch(&stream->user, REACTOR_STREAM_EVENT_ERROR, NULL);
+}
+
+static void reactor_stream_event(void *state, int type, void *arg)
+{
+  reactor_stream *stream = state;
+  short revents = ((struct pollfd *) arg)->revents;
+  reactor_stream_data data;
+  char buffer[REACTOR_STREAM_BLOCK_SIZE];
+  ssize_t n;
+
+  (void) type;
+  reactor_stream_hold(stream);
+  if (revents & (POLLERR | POLLNVAL))
+    reactor_stream_error(stream);
+  else
+    {
+      if (revents & POLLOUT)
+        reactor_stream_flush(stream);
+      if ((revents & (POLLIN|POLLHUP)) == POLLHUP)
+        reactor_user_dispatch(&stream->user, REACTOR_STREAM_EVENT_HANGUP, NULL);
+      else if (revents & POLLIN)
+        {
+          n = read(stream->fd, buffer, sizeof buffer);
+          if (n == 0)
+            reactor_user_dispatch(&stream->user, REACTOR_STREAM_EVENT_HANGUP, NULL);
+          else if (n == -1)
+            {
+              if (errno != EAGAIN)
+                reactor_stream_error(stream);
+            }
+          else
+            {
+              if (!buffer_size(&stream->input))
+                {
+                  data = (reactor_stream_data) {.base = buffer, .size = n};
+                  reactor_user_dispatch(&stream->user, REACTOR_STREAM_EVENT_READ, &data);
+                  if (data.size)
+                    buffer_insert(&stream->input, buffer_size(&stream->input), data.base, data.size);
+                }
+              else
+                {
+                  buffer_insert(&stream->input, buffer_size(&stream->input), buffer, n);
+                  data = (reactor_stream_data) {.base = buffer_data(&stream->input), .size = buffer_size(&stream->input)};
+                  reactor_user_dispatch(&stream->user, REACTOR_STREAM_EVENT_READ, &data);
+                  buffer_erase(&stream->input, 0, buffer_size(&stream->input) - data.size);
+                }
+            }
+        }
+    }
+  reactor_stream_release(stream);
+}
+
+void reactor_stream_hold(reactor_stream *stream)
 {
   stream->ref ++;
 }
 
-static inline void reactor_stream_release(reactor_stream *stream)
+void reactor_stream_release(reactor_stream *stream)
 {
   stream->ref --;
-  reactor_stream_close_final(stream);
-}
-
-static size_t reactor_stream_desc_write(reactor_stream *stream, void *data, size_t size)
-{
-  size_t i;
-  ssize_t n;
-
-  for (i = 0; i < size; i += n)
+  if (!stream->ref)
     {
-      n = reactor_desc_write(&stream->desc, (char *) data + i, size - i);
-      if (n == -1)
-        {
-          stream->flags |= REACTOR_STREAM_FLAGS_BLOCKED;
-          reactor_desc_set(&stream->desc, REACTOR_DESC_FLAGS_WRITE);
-          break;
-        }
+      reactor_stream_close_fd(stream);
+      buffer_destruct(&stream->input);
+      buffer_destruct(&stream->output);
+      stream->state = REACTOR_STREAM_STATE_CLOSED;
+      reactor_user_dispatch(&stream->user, REACTOR_STREAM_EVENT_CLOSE, NULL);
     }
-  return i;
 }
 
-void reactor_stream_init(reactor_stream *stream, reactor_user_callback *callback, void *state)
+void reactor_stream_open(reactor_stream *stream, reactor_user_callback *callback, void *state, int fd)
 {
-  *stream = (reactor_stream) {.state = REACTOR_STREAM_CLOSED};
-  reactor_user_init(&stream->user, callback, state);
-  reactor_desc_init(&stream->desc, reactor_stream_event, stream);
-  buffer_init(&stream->input);
-  buffer_init(&stream->output);
-}
-
-void reactor_stream_open(reactor_stream *stream, int fd)
-{
-  if (stream->state != REACTOR_STREAM_CLOSED)
-    {
-      (void) close(fd);
-      reactor_stream_error(stream);
-      return;
-    }
-
-  stream->state = REACTOR_STREAM_OPEN;
-  reactor_desc_open(&stream->desc, fd, REACTOR_DESC_FLAGS_READ);
-}
-
-void reactor_stream_error(reactor_stream *stream)
-{
-  stream->state = REACTOR_STREAM_INVALID;
-  reactor_user_dispatch(&stream->user, REACTOR_STREAM_ERROR, NULL);
-}
-
-void reactor_stream_shutdown(reactor_stream *stream)
-{
-  if (stream->state != REACTOR_STREAM_OPEN &&
-      stream->state != REACTOR_STREAM_INVALID)
-    return;
-
-  if (stream->state == REACTOR_STREAM_OPEN && buffer_size(&stream->output))
-    {
-      stream->state = REACTOR_STREAM_LINGER;
-      reactor_desc_clear(&stream->desc, REACTOR_DESC_FLAGS_READ);
-      return;
-    }
-
-  reactor_stream_close(stream);
+  stream->ref = 0;
+  stream->state = REACTOR_STREAM_STATE_OPEN;
+  reactor_user_construct(&stream->user, callback, state);
+  stream->fd = fd;
+  buffer_construct(&stream->input);
+  buffer_construct(&stream->output);
+  (void) fcntl(stream->fd, F_SETFL,O_NONBLOCK);
+  reactor_core_fd_register(stream->fd, reactor_stream_event, stream, POLLIN);
+  reactor_stream_hold(stream);
 }
 
 void reactor_stream_close(reactor_stream *stream)
 {
-  if (stream->state == REACTOR_STREAM_CLOSED)
+  if (stream->state & REACTOR_STREAM_STATE_CLOSED)
     return;
-  reactor_desc_close(&stream->desc);
-  stream->state = REACTOR_STREAM_CLOSE_WAIT;
-  reactor_stream_close_final(stream);
-}
 
-void reactor_stream_event(void *state, int type, void *data)
-{
-  reactor_stream *stream = state;
-
-  (void) data;
   reactor_stream_hold(stream);
-  switch(type)
+  if (stream->state & (REACTOR_STREAM_STATE_OPEN | REACTOR_STREAM_STATE_CLOSING))
     {
-    case REACTOR_DESC_ERROR:
-      reactor_stream_error(stream);
-      break;
-    case REACTOR_DESC_READ:
-      if (stream->state != REACTOR_STREAM_OPEN)
-        break;
-      reactor_stream_read(stream);
-      if ((stream->state == REACTOR_STREAM_OPEN ||
-           stream->state == REACTOR_STREAM_LINGER ) &&
-          (stream->flags & REACTOR_STREAM_FLAGS_BLOCKED) == 0)
+      stream->state = REACTOR_STREAM_STATE_CLOSING;
+      if (buffer_size(&stream->output))
         reactor_stream_flush(stream);
-      break;
-    case REACTOR_DESC_WRITE:
-      stream->flags &= ~REACTOR_STREAM_FLAGS_BLOCKED;
-      reactor_user_dispatch(&stream->user, REACTOR_STREAM_WRITE_AVAILABLE, NULL);
-      if (stream->state == REACTOR_STREAM_OPEN &&
-          (stream->flags & REACTOR_STREAM_FLAGS_BLOCKED) == 0)
-        reactor_stream_flush(stream);
-      break;
-    case REACTOR_DESC_SHUTDOWN:
-      reactor_user_dispatch(&stream->user, REACTOR_STREAM_SHUTDOWN, NULL);
-      break;
-    case REACTOR_DESC_CLOSE:
-      reactor_stream_close_final(stream);
-      break;
+      if (stream->state & REACTOR_STREAM_STATE_CLOSING && buffer_size(&stream->output) == 0)
+        reactor_stream_release(stream);
     }
+
+  if (stream->state & REACTOR_STREAM_STATE_ERROR)
+    reactor_stream_release(stream);
   reactor_stream_release(stream);
 }
 
-void reactor_stream_read(reactor_stream *stream)
+void reactor_stream_write(reactor_stream *stream, void *data, size_t size)
 {
-  char buffer[REACTOR_STREAM_BLOCK_SIZE];
-  reactor_stream_data data;
-  ssize_t n;
-
-  n = reactor_desc_read(&stream->desc, buffer, sizeof buffer);
-  if (n == -1 && errno == EAGAIN)
-    return;
-
-  if (n == -1)
-    {
-      reactor_stream_error(stream);
-      return;
-    }
-
-  if (n == 0)
-    {
-      reactor_user_dispatch(&stream->user, REACTOR_STREAM_SHUTDOWN, NULL);
-      return;
-    }
-
-  reactor_stream_hold(stream);
-  if (buffer_size(&stream->input) == 0)
-    {
-      data = (reactor_stream_data) {.base = buffer, .size = n};
-      reactor_user_dispatch(&stream->user, REACTOR_STREAM_READ, &data);
-      if (stream->state == REACTOR_STREAM_OPEN && data.size)
-        buffer_insert(&stream->input, buffer_size(&stream->input), data.base, data.size);
-    }
- else
-   {
-     buffer_insert(&stream->input, buffer_size(&stream->input), buffer, n);
-     data = (reactor_stream_data) {.base = buffer_data(&stream->input), .size = buffer_size(&stream->input)};
-     reactor_user_dispatch(&stream->user, REACTOR_STREAM_READ, &data);
-     buffer_erase(&stream->input, 0, buffer_size(&stream->input) - data.size);
-   }
-  reactor_stream_release(stream);
-}
-
-void reactor_stream_write(reactor_stream *stream, void *base, size_t size)
-{
-  int e;
-
-  e = buffer_insert(&stream->output, buffer_size(&stream->output), base, size);
-  if (e == -1)
-    reactor_stream_error(stream);
-}
-
-void reactor_stream_write_direct(reactor_stream *stream, void *base, size_t size)
-{
-  size_t n;
-
-  if (stream->state != REACTOR_STREAM_OPEN && stream->state != REACTOR_STREAM_LINGER)
-    return;
-
-  if (buffer_size(&stream->output))
-    {
-      reactor_stream_write(stream, base, size);
-      return;
-    }
-
-  n = reactor_stream_desc_write(stream, base, size);
-  if (n < size)
-    {
-      if (errno != EAGAIN)
-        reactor_stream_error(stream);
-      else
-        reactor_stream_write(stream, (char *) base + n, size - n);
-    }
-}
-
-void reactor_stream_write_string(reactor_stream *stream, char *string)
-{
-  reactor_stream_write(stream, string, strlen(string));
+  buffer_insert(&stream->output, buffer_size(&stream->output), data, size);
 }
 
 void reactor_stream_write_unsigned(reactor_stream *stream, uint32_t n)
@@ -231,20 +144,13 @@ void reactor_stream_write_unsigned(reactor_stream *stream, uint32_t n)
   uint32_t t, size, x;
   buffer *b;
   char *base;
-  int e;
 
   t = (32 - __builtin_clz(n | 1)) * 1233 >> 12;
   size = t - (n < pow10[t]) + 1;
-
   b = &stream->output;
-  e = buffer_reserve(b, buffer_size(b) + size);
-  if (e == -1)
-    {
-      reactor_stream_error(stream);
-      return;
-    }
+  buffer_reserve(b, buffer_size(b) + size);
   b->size += size;
-  base = buffer_data(b) + buffer_size(b);
+  base = (char *) buffer_data(b) + buffer_size(b);
 
   while (n >= 100)
     {
@@ -265,30 +171,66 @@ void reactor_stream_write_unsigned(reactor_stream *stream, uint32_t n)
 
 void reactor_stream_flush(reactor_stream *stream)
 {
-  ssize_t n;
+  char *base;
+  ssize_t size, n;
+  int saved_state;
 
-  if (stream->state != REACTOR_STREAM_OPEN && stream->state != REACTOR_STREAM_LINGER)
-    return;
-
-  if (!buffer_size(&stream->output))
-    return;
-
-  n = reactor_stream_desc_write(stream, buffer_data(&stream->output), buffer_size(&stream->output));
-  if (n == -1 && errno != EAGAIN)
+  errno = 0;
+  base = buffer_data(&stream->output);
+  size = buffer_size(&stream->output);
+  while (size)
     {
-      reactor_stream_error(stream);
+      n = write(stream->fd, base, size);
+      if (n == -1)
+        break;
+      base += n;
+      size -= n;
+    }
+  buffer_erase(&stream->output, 0, buffer_size(&stream->output) - size);
+  if (buffer_size(&stream->output) == 0)
+    {
+      if (stream->state == REACTOR_STREAM_STATE_OPEN)
+        {
+          ((struct pollfd *) reactor_core_fd_poll(stream->fd))->events &= ~POLLOUT;
+          reactor_user_dispatch(&stream->user, REACTOR_STREAM_EVENT_WRITE, NULL);
+        }
+      else
+        reactor_stream_close(stream);
       return;
     }
-  buffer_erase(&stream->output, 0, n);
-  if (buffer_size(&stream->output))
-    reactor_desc_set(&stream->desc, REACTOR_DESC_FLAGS_WRITE);
-  if (stream->state == REACTOR_STREAM_LINGER && buffer_size(&stream->output) == 0)
-    reactor_stream_close(stream);
 
+  if (errno == EAGAIN)
+    {
+      ((struct pollfd *) reactor_core_fd_poll(stream->fd))->events |= POLLOUT;
+      reactor_user_dispatch(&stream->user, REACTOR_STREAM_EVENT_BLOCKED, NULL);
+      return;
+    }
+
+  reactor_stream_hold(stream);
+  saved_state = stream->state;
+  reactor_stream_error(stream);
+  if (saved_state == REACTOR_STREAM_STATE_CLOSING)
+    reactor_stream_close(stream);
+  reactor_stream_release(stream);
 }
 
-void reactor_stream_consume(reactor_stream_data *data, size_t size)
+void reactor_stream_write_notify(reactor_stream *stream)
 {
-  data->base += size;
+  ((struct pollfd *) reactor_core_fd_poll(stream->fd))->events |= POLLOUT;
+}
+
+void *reactor_stream_data_base(reactor_stream_data *data)
+{
+  return data->base;
+}
+
+size_t reactor_stream_data_size(reactor_stream_data *data)
+{
+  return data->size;
+}
+
+void reactor_stream_data_consume(reactor_stream_data *data, size_t size)
+{
+  data->base = (char *) data->base + size;
   data->size -= size;
 }

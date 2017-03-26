@@ -33,7 +33,7 @@
 #define ssize_t intptr_t
 #endif
 
-/* $Id: ded2259d5094ae4620381807de0d16f25b6d617c $ */
+/* $Id: 67fd3ee74103ada60258d8a16e868f483abcca87 $ */
 
 #ifdef __cplusplus
 extern "C" {
@@ -78,6 +78,9 @@ struct phr_chunked_decoder {
  * error.
  */
 ssize_t phr_decode_chunked(struct phr_chunked_decoder *decoder, char *buf, size_t *bufsz);
+
+/* returns if the chunked decoder is in middle of chunked data */
+int phr_decode_chunked_is_in_data(struct phr_chunked_decoder *decoder);
 
 #ifdef __cplusplus
 }

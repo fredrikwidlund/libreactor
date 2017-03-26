@@ -1,15 +1,13 @@
-#!/bin/sh
+#!/bin/bash
 
-sources=$(find src -name '*.c')
-for file in $sources
+for file in src/reactor/*.c
 do
-    dir=$(dirname $file)
-    name=$(basename $file)
-    name=${name%%.c}
-    echo [$name]
-    test=`gcov -b src/reactor_core/libreactor_core_test_a-$name | grep -A4 File.*$name`
+    file=${file##*/}
+    file=${file%.c}
+    test=`gcov -b src/reactor/libreactor_test_a-$file | grep -A4 File.*$file`
     echo "$test"
     echo "$test" | grep '% of' | grep '100.00%' >/dev/null || exit 1
     echo "$test" | grep '% of' | grep -v '100.00%' >/dev/null && exit 1
 done
+
 exit 0
