@@ -17,6 +17,7 @@
 #include "reactor_user.h"
 #include "reactor_pool.h"
 #include "reactor_core.h"
+#include "reactor_timer.h"
 #include "reactor_resolver.h"
 #include "reactor_stream.h"
 #include "reactor_tcp.h"
@@ -55,7 +56,6 @@ static void reactor_http_server_error(reactor_http_server *server)
     reactor_user_dispatch(&server->user, REACTOR_HTTP_SERVER_EVENT_ERROR, server);
 }
 
-/*
 static void reactor_http_server_date(reactor_http_server *server)
 {
   static const char *days[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
@@ -69,7 +69,6 @@ static void reactor_http_server_date(reactor_http_server *server)
   memcpy(server->date, days[tm.tm_wday], 3);
   memcpy(server->date + 8, months[tm.tm_mon], 3);
 }
-*/
 
 static void reactor_http_server_request(reactor_http_server_session *session, reactor_http_request *request)
 {
@@ -130,6 +129,22 @@ static void reactor_http_server_event_tcp(void *state, int type, void *data)
   }
 }
 
+static void reactor_http_server_event_timer(void *state, int type, void *data)
+{
+  reactor_http_server *server = state;
+
+  (void) data;
+  switch (type)
+    {
+    case REACTOR_TIMER_EVENT_ERROR:
+      reactor_http_server_error(server);
+      break;
+    case REACTOR_TIMER_EVENT_CALL:
+      reactor_http_server_date(server);
+      break;
+    }
+}
+
 void reactor_http_server_open(reactor_http_server *server, reactor_user_callback *callback, void *state,
                               char *host, char *port)
 {
@@ -138,7 +153,10 @@ void reactor_http_server_open(reactor_http_server *server, reactor_user_callback
   vector_construct(&server->map, sizeof(reactor_http_server_map));
   vector_object_release(&server->map, reactor_http_server_map_release);
   reactor_user_construct(&server->user, callback, state);
+  server->name = "*";
+  reactor_http_server_date(server);
   reactor_http_server_hold(server);
+  reactor_timer_open(&server->timer, reactor_http_server_event_timer, server, 1000000000, 1000000000);
   reactor_tcp_open(&server->tcp, reactor_http_server_event_tcp, server, host, port, REACTOR_HTTP_FLAG_SERVER);
 }
 
@@ -169,7 +187,11 @@ void reactor_http_server_route(reactor_http_server *server, reactor_user_callbac
 void reactor_http_server_respond_mime(reactor_http_server_session *session, char *type, char *data, size_t size)
 {
   reactor_http_write_response(&session->http, (reactor_http_response[]){{1, 200, "OK",
-          1, (reactor_http_header[]){{"Content-Type", type}}, data, size}});
+          3, (reactor_http_header[]){
+            {"Server", session->server->name},
+            {"Date", session->server->date},
+            {"Content-Type", type}
+          }, data, size}});
 }
 
 void reactor_http_server_respond_text(reactor_http_server_session *session, char *text)

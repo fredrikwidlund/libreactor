@@ -35,7 +35,10 @@ struct reactor_http_server
   int                   state;
   reactor_user          user;
   reactor_tcp           tcp;
+  reactor_timer         timer;
   vector                map;
+  char                 *name;
+  char                  date[32];
 };
 
 typedef struct reactor_http_server_session reactor_http_server_session;
