@@ -169,7 +169,6 @@ void reactor_stream_write_unsigned(reactor_stream *stream, uint32_t n)
     *--base = n + '0';
 }
 
-
 void reactor_stream_flush(reactor_stream *stream)
 {
   char *base;
