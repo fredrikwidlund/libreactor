@@ -80,7 +80,7 @@ static void reactor_http_server_request(reactor_http_server_session *session, re
     if ((!map[i].method || strcmp(map[i].method, request->method) == 0) &&
         (!map[i].path || strcmp(map[i].path, request->path) == 0))
       {
-       reactor_user_dispatch(&map->user, REACTOR_HTTP_SERVER_EVENT_REQUEST,
+        reactor_user_dispatch(&map[i].user, REACTOR_HTTP_SERVER_EVENT_REQUEST,
                               (reactor_http_server_context[]){{.session = session, .request = request}});
         return;
       }
