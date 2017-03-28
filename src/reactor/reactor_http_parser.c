@@ -6,7 +6,13 @@
 #include <sys/queue.h>
 
 #include <dynamic.h>
-#include <reactor.h>
+
+#include "reactor_util.h"
+#include "reactor_user.h"
+#include "reactor_core.h"
+#include "reactor_stream.h"
+#include "reactor_http_parser.h"
+#include "reactor_http.h"
 
 #include "picohttpparser/picohttpparser.h"
 
@@ -23,7 +29,7 @@ int reactor_http_parser_read_request(reactor_http_parser *parser, reactor_http_r
   ssize_t body_size;
   int header_size;
 
-  if (parser->complete_size && reactor_stream_data_size(data) < parser->complete_size)
+  if (reactor_unlikely(parser->complete_size && reactor_stream_data_size(data) < parser->complete_size))
     return 0;
 
   header_size = phr_parse_request(reactor_stream_data_base(data), reactor_stream_data_size(data),
@@ -31,22 +37,22 @@ int reactor_http_parser_read_request(reactor_http_parser *parser, reactor_http_r
                                   (const char **) &request->path, &path_size,
                                   &request->version,
                                   phr_header, &request->header_count, 0);
-  if (header_size == -1)
+  if (reactor_unlikely(header_size == -1))
     return -1;
 
-  if (header_size == -2)
+  if (reactor_unlikely(header_size == -2))
     return 0;
 
   body_size = 0;
-  if (!parser->complete_size)
+  if (reactor_likely(!parser->complete_size))
     {
       for (i = 0; i < request->header_count; i ++)
-        if (phr_header[i].name_len == strlen("content-length") &&
-            strncasecmp(phr_header[i].name, "content-length", phr_header[i].name_len) == 0)
+        if (reactor_unlikely(phr_header[i].name_len == strlen("content-length") &&
+                             strncasecmp(phr_header[i].name, "content-length", phr_header[i].name_len) == 0))
           body_size = strtoul(phr_header[i].value, NULL, 10);
 
       parser->complete_size = header_size + body_size;
-      if (reactor_stream_data_size(data) < parser->complete_size)
+      if (reactor_unlikely(reactor_stream_data_size(data) < parser->complete_size))
         return 0;
     }
 
@@ -67,7 +73,7 @@ int reactor_http_parser_read_response(reactor_http_parser *parser, reactor_http_
   ssize_t body_size;
   int header_size;
 
-  if (parser->complete_size && reactor_stream_data_size(data) < parser->complete_size)
+  if (reactor_unlikely(parser->complete_size && reactor_stream_data_size(data) < parser->complete_size))
     return 0;
 
   header_size = phr_parse_response(reactor_stream_data_base(data), reactor_stream_data_size(data),
@@ -75,24 +81,24 @@ int reactor_http_parser_read_response(reactor_http_parser *parser, reactor_http_
                          &response->status,
                          (const char **) &response->reason, &reason_size,
                          phr_header, &response->header_count, 0);
-  if (header_size == -1)
+  if (reactor_unlikely(header_size == -1))
     return -1;
 
-  if (header_size == -2)
+  if (reactor_unlikely(header_size == -2))
     return 0;
 
   body_size = -1;
-  if (!parser->complete_size)
+  if (reactor_likely(!parser->complete_size))
     {
       for (i = 0; i < response->header_count; i ++)
         if (phr_header[i].name_len == strlen("content-length") &&
             strncasecmp(phr_header[i].name, "content-length", phr_header[i].name_len) == 0)
           body_size = strtoul(phr_header[i].value, NULL, 10);
-      if (body_size == -1)
+      if (reactor_unlikely(body_size == -1))
         return -1;
 
       parser->complete_size = header_size + body_size;
-      if (reactor_stream_data_size(data) < parser->complete_size)
+      if (reactor_unlikely(reactor_stream_data_size(data) < parser->complete_size))
         return 0;
     }
 
