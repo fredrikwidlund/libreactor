@@ -10,6 +10,7 @@
 extern "C" {
 #endif
 
+#include "reactor/reactor_util.h"
 #include "reactor/reactor_user.h"
 #include "reactor/reactor_pool.h"
 #include "reactor/reactor_core.h"

@@ -14,6 +14,7 @@
 
 #include <dynamic.h>
 
+#include "reactor_util.h"
 #include "reactor_user.h"
 #include "reactor_pool.h"
 #include "reactor_core.h"
@@ -42,7 +43,7 @@ static void reactor_http_server_hold(reactor_http_server *server)
 static void reactor_http_server_release(reactor_http_server *server)
 {
   server->ref --;
-  if (!server->ref)
+  if (reactor_unlikely(!server->ref))
     {
       vector_destruct(&server->map);
       if (server->user.callback)

@@ -12,6 +12,7 @@
 
 #include <dynamic.h>
 
+#include "reactor_util.h"
 #include "reactor_user.h"
 #include "reactor_pool.h"
 #include "reactor_core.h"
@@ -41,13 +42,13 @@ static void reactor_http_client_event(void *state, int type, void *data)
           response.header_count = REACTOR_HTTP_HEADERS_MAX;
           response.headers = headers;
           e = reactor_http_parser_read_response(&http->parser, &response, data);
-          if (e == -1)
+          if (reactor_unlikely(e == -1))
             {
               reactor_http_error(http);
               break;
             }
 
-          if (e == 0)
+          if (reactor_unlikely(e == 0))
             break;
 
           reactor_user_dispatch(&http->user, REACTOR_HTTP_EVENT_RESPONSE, &response);
@@ -79,13 +80,13 @@ static void reactor_http_server_event(void *state, int type, void *data)
           request.header_count = REACTOR_HTTP_HEADERS_MAX;
           request.headers = headers;
           e = reactor_http_parser_read_request(&http->parser, &request, data);
-          if (e == -1)
+          if (reactor_unlikely(e == -1))
             {
               reactor_http_error(http);
               break;
             }
 
-          if (e == 0)
+          if (reactor_unlikely(e == 0))
             break;
 
           reactor_user_dispatch(&http->user, REACTOR_HTTP_EVENT_REQUEST, &request);
@@ -111,7 +112,7 @@ void reactor_http_hold(reactor_http *http)
 void reactor_http_release(reactor_http *http)
 {
   http->ref --;
-  if (!http->ref)
+  if (reactor_unlikely(!http->ref))
     {
       http->state = REACTOR_HTTP_STATE_CLOSED;
       reactor_user_dispatch(&http->user, REACTOR_HTTP_EVENT_CLOSE, NULL);
@@ -143,10 +144,10 @@ void reactor_http_write_request(reactor_http *http, reactor_http_request *reques
 {
   reactor_http_write_request_line(http, request->method, request->path, request->version);
   reactor_http_write_headers(http, request->headers, request->header_count);
-  if (request->size)
+  if (reactor_unlikely(request->size))
     reactor_http_write_content_length(http, request->size);
   reactor_http_write_end(http);
-  if (request->size)
+  if (reactor_unlikely(request->size))
     reactor_http_write_body(http, request->data, request->size);
 }
 
@@ -156,7 +157,7 @@ void reactor_http_write_response(reactor_http *http, reactor_http_response *resp
   reactor_http_write_headers(http, response->headers, response->header_count);
   reactor_http_write_content_length(http, response->size);
   reactor_http_write_end(http);
-  if (response->size)
+  if (reactor_likely(response->size))
     reactor_http_write_body(http, response->data, response->size);
 }
 

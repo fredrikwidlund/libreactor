@@ -12,6 +12,7 @@
 
 #include <dynamic.h>
 
+#include "reactor_util.h"
 #include "reactor_user.h"
 #include "reactor_pool.h"
 #include "reactor_core.h"
@@ -70,13 +71,13 @@ int reactor_core_run(void)
   while (vector_size(&core.polls))
     {
       e = poll(vector_data(&core.polls), vector_size(&core.polls), -1);
-      if (e == -1)
+      if (reactor_unlikely(e == -1))
         return -1;
 
       for (i = 0; i < vector_size(&core.polls); i ++)
         {
           pollfd = reactor_core_fd_poll(i);
-          if (pollfd->revents)
+          if (reactor_likely(pollfd->revents))
             reactor_user_dispatch(vector_at(&core.users, i), REACTOR_CORE_EVENT_FD, pollfd);
         }
     }
