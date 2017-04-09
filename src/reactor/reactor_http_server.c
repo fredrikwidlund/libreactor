@@ -14,6 +14,7 @@
 
 #include <dynamic.h>
 
+#include "reactor_memory.h"
 #include "reactor_util.h"
 #include "reactor_user.h"
 #include "reactor_pool.h"
@@ -25,15 +26,6 @@
 #include "reactor_http_parser.h"
 #include "reactor_http.h"
 #include "reactor_http_server.h"
-
-static void reactor_http_server_map_release(void *data)
-{
-  reactor_http_server_map *map;
-
-  map = data;
-  free(map->method);
-  free(map->path);
-}
 
 static void reactor_http_server_hold(reactor_http_server *server)
 {
@@ -78,13 +70,15 @@ static void reactor_http_server_request(reactor_http_server_session *session, re
 
   map = vector_data(&session->server->map);
   for (i = 0; i < vector_size(&session->server->map); i ++)
-    if ((!map[i].method || strcmp(map[i].method, request->method) == 0) &&
-        (!map[i].path || strcmp(map[i].path, request->path) == 0))
-      {
-        reactor_user_dispatch(&map[i].user, REACTOR_HTTP_SERVER_EVENT_REQUEST,
-                              (reactor_http_server_context[]){{.session = session, .request = request}});
-        return;
-      }
+    {
+      if ((reactor_memory_empty(map[i].method) || reactor_memory_equal(map[i].method, request->method)) &&
+          (reactor_memory_empty(map[i].path) || reactor_memory_equal(map[i].path, request->path)))
+        {
+          reactor_user_dispatch(&map[i].user, REACTOR_HTTP_SERVER_EVENT_REQUEST,
+                                (reactor_http_server_context[]){{.session = session, .request = request}});
+          return;
+        }
+    }
 }
 
 static void reactor_http_server_event_http(void *state, int type, void *data)
@@ -152,7 +146,6 @@ void reactor_http_server_open(reactor_http_server *server, reactor_user_callback
   server->ref = 0;
   server->state = REACTOR_HTTP_SERVER_STATE_OPEN;
   vector_construct(&server->map, sizeof(reactor_http_server_map));
-  vector_object_release(&server->map, reactor_http_server_map_release);
   reactor_user_construct(&server->user, callback, state);
   server->name = "*";
   reactor_http_server_date(server);
@@ -164,16 +157,6 @@ void reactor_http_server_open(reactor_http_server *server, reactor_user_callback
 void reactor_http_server_close(reactor_http_server *server)
 {
   (void) server;
-  /*
-  if (reactor_http_server_active(server))
-    {
-      server->flags &= ~REACTOR_HTTP_SERVER_FLAG_ACTIVE;
-      if (reactor_tcp_active(&server->tcp))
-        reactor_tcp_close(&server->tcp);
-      if (reactor_timer_active(&server->timer))
-        reactor_timer_close(&server->timer);
-    }
-  */
 }
 
 void reactor_http_server_route(reactor_http_server *server, reactor_user_callback *callback, void *state,
@@ -181,18 +164,22 @@ void reactor_http_server_route(reactor_http_server *server, reactor_user_callbac
 {
   vector_push_back(&server->map, (reactor_http_server_map[]) {{
         .user = {.callback = callback, .state = state},
-        .method = method,
-        .path = path}});
+        .method = reactor_memory_str(method),
+        .path = reactor_memory_str(path)}});
 }
 
-void reactor_http_server_respond_mime(reactor_http_server_session *session, char *type, char *data, size_t size)
+void reactor_http_server_respond_mime(reactor_http_server_session *session, char *type, void *body, size_t size)
 {
-  reactor_http_write_response(&session->http, (reactor_http_response[]){{1, 200, "OK",
-          3, (reactor_http_header[]){
-            {"Server", session->server->name},
-            {"Date", session->server->date},
-            {"Content-Type", type}
-          }, data, size}});
+  reactor_http_write_response(&session->http, (reactor_http_response[]){{
+        .version = 1,
+        .status = 200,
+        .reason = reactor_memory_str("OK"),
+        .header_count = 3,
+        .headers = (reactor_http_header[]){
+          {.name = reactor_memory_str("Server"), .value = reactor_memory_str(session->server->name)},
+          {.name = reactor_memory_str("Date"), .value = reactor_memory_str(session->server->date)},
+          {.name = reactor_memory_str("Content-Type"), .value = reactor_memory_str(type)}
+        }, reactor_memory_ref(body, size)}});
 }
 
 void reactor_http_server_respond_text(reactor_http_server_session *session, char *text)

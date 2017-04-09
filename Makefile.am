@@ -11,6 +11,7 @@ README.rst
 
 SOURCE_FILES = \
 src/picohttpparser/picohttpparser.c \
+src/reactor/reactor_memory.c \
 src/reactor/reactor_user.c \
 src/reactor/reactor_pool.c \
 src/reactor/reactor_core.c \
@@ -23,6 +24,7 @@ src/reactor/reactor_http.c \
 src/reactor/reactor_http_server.c
 
 HEADER_FILES = \
+src/reactor/reactor_memory.h \
 src/reactor/reactor_util.h \
 src/reactor/reactor_user.h \
 src/reactor/reactor_pool.h \

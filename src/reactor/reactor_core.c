@@ -76,9 +76,9 @@ int reactor_core_run(void)
 
       for (i = 0; i < vector_size(&core.polls); i ++)
         {
-          pollfd = reactor_core_fd_poll(i);
-          if (reactor_likely(pollfd->revents))
-            reactor_user_dispatch(vector_at(&core.users, i), REACTOR_CORE_EVENT_FD, pollfd);
+          pollfd = vector_data(&core.polls);
+          if (reactor_likely(pollfd[i].revents))
+            reactor_user_dispatch(vector_at(&core.users, i), REACTOR_CORE_EVENT_FD, &pollfd[i]);
         }
     }
 

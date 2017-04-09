@@ -49,12 +49,14 @@ static void http_event(void *state, int type, void *data)
       free(tx);
       break;
     case REACTOR_HTTP_EVENT_RESPONSE:
-      (void) fprintf(stdout, "%.*s", (int) response->size, (char *) response->data);
+      (void) fprintf(stdout, "%.*s", (int) reactor_memory_size(response->body), (char *) reactor_memory_base(response->body));
       reactor_http_close(&tx->http);
       break;
     case REACTOR_HTTP_EVENT_REQUEST:
-      reactor_http_write_response(&tx->http, (reactor_http_response[]){{1, 200, "OK",
-              1, (reactor_http_header[]){{"Content-Type", "text/plain"}}, "Hello, World\n", 13}});
+      reactor_http_write_response(&tx->http, (reactor_http_response[]){{1, 200, reactor_memory_str("OK"),
+              1, (reactor_http_header[]){
+              {reactor_memory_str("Content-Type"), reactor_memory_str("text/plain")}},
+              reactor_memory_str("Hello, World\n")}});
       break;
     }
 }
@@ -76,8 +78,15 @@ static void tcp_event(void *state, int type, void *data)
       tx = malloc(sizeof *tx);
       tx->app = app;
       reactor_http_open(&tx->http, http_event, tx, s, 0);
-      reactor_http_write_request(&tx->http, (reactor_http_request[]){{"GET", app->resource, 1,
-              2, (reactor_http_header[]){{"Host", app->host}, {"Connection", "close"}}, NULL, 0}});
+      reactor_http_write_request(&tx->http, (reactor_http_request[]){{
+            .method = reactor_memory_str("GET"),
+            .path = reactor_memory_str(app->resource),
+            .version = 1,
+            .header_count = 2,
+            .headers = (reactor_http_header[]){
+              {reactor_memory_str("Host"), reactor_memory_str(app->host)},
+              {reactor_memory_str("Connection"), reactor_memory_str("close")}},
+              .body = reactor_memory_ref(NULL, 0)}});
       reactor_http_flush(&tx->http);
       break;
     case REACTOR_TCP_EVENT_ACCEPT:

@@ -25,7 +25,7 @@ typedef struct reactor_http_request reactor_http_request;
 typedef struct reactor_http_response reactor_http_response;
 
 void reactor_http_parser_construct(reactor_http_parser *);
-int  reactor_http_parser_read_request(reactor_http_parser *, reactor_http_request *, reactor_stream_data *);
-int  reactor_http_parser_read_response(reactor_http_parser *, reactor_http_response *, reactor_stream_data *);
+int  reactor_http_parser_request(reactor_http_parser *, reactor_http_request *, reactor_stream_data *);
+int  reactor_http_parser_response(reactor_http_parser *, reactor_http_response *, reactor_stream_data *);
 
 #endif /* REACTOR_HTTP_PARSER_H_INCLUDED */

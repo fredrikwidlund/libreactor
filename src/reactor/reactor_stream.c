@@ -39,45 +39,58 @@ static void reactor_stream_event(void *state, int type, void *arg)
   ssize_t n;
 
   (void) type;
-  reactor_stream_hold(stream);
-  if (reactor_unlikely(revents & (POLLERR | POLLNVAL)))
-    reactor_stream_error(stream);
+  if (reactor_likely(revents == POLLIN && !buffer_size(&stream->input)))
+    {
+      n = read(stream->fd, buffer, sizeof buffer);
+      if (n <= 0)
+        return;
+      data = (reactor_stream_data) {.base = buffer, .size = n};
+      reactor_user_dispatch(&stream->user, REACTOR_STREAM_EVENT_READ, &data);
+      if (reactor_unlikely(data.size))
+        buffer_insert(&stream->input, buffer_size(&stream->input), data.base, data.size);
+    }
   else
     {
-      if (reactor_unlikely(revents & POLLOUT))
-        reactor_stream_flush(stream);
-      if (reactor_unlikely((revents & (POLLIN|POLLHUP)) == POLLHUP))
-        reactor_user_dispatch(&stream->user, REACTOR_STREAM_EVENT_HANGUP, NULL);
-      else if (reactor_likely(revents & POLLIN))
+      reactor_stream_hold(stream);
+      if (reactor_unlikely(revents & (POLLERR | POLLNVAL)))
+        reactor_stream_error(stream);
+      else
         {
-          n = read(stream->fd, buffer, sizeof buffer);
-          if (reactor_unlikely(n == 0))
+          if (reactor_unlikely(revents & POLLOUT))
+            reactor_stream_flush(stream);
+          if (reactor_unlikely((revents & (POLLIN|POLLHUP)) == POLLHUP))
             reactor_user_dispatch(&stream->user, REACTOR_STREAM_EVENT_HANGUP, NULL);
-          else if (reactor_unlikely(n == -1))
+          else if (reactor_likely(revents & POLLIN))
             {
-              if (errno != EAGAIN)
-                reactor_stream_error(stream);
-            }
-          else
-            {
-              if (reactor_likely(!buffer_size(&stream->input)))
+              n = read(stream->fd, buffer, sizeof buffer);
+              if (reactor_unlikely(n == 0))
+                reactor_user_dispatch(&stream->user, REACTOR_STREAM_EVENT_HANGUP, NULL);
+              else if (reactor_unlikely(n == -1))
                 {
-                  data = (reactor_stream_data) {.base = buffer, .size = n};
-                  reactor_user_dispatch(&stream->user, REACTOR_STREAM_EVENT_READ, &data);
-                  if (reactor_unlikely(data.size))
-                    buffer_insert(&stream->input, buffer_size(&stream->input), data.base, data.size);
+                  if (errno != EAGAIN)
+                    reactor_stream_error(stream);
                 }
               else
                 {
-                  buffer_insert(&stream->input, buffer_size(&stream->input), buffer, n);
-                  data = (reactor_stream_data) {.base = buffer_data(&stream->input), .size = buffer_size(&stream->input)};
-                  reactor_user_dispatch(&stream->user, REACTOR_STREAM_EVENT_READ, &data);
-                  buffer_erase(&stream->input, 0, buffer_size(&stream->input) - data.size);
+                  if (reactor_likely(!buffer_size(&stream->input)))
+                    {
+                      data = (reactor_stream_data) {.base = buffer, .size = n};
+                      reactor_user_dispatch(&stream->user, REACTOR_STREAM_EVENT_READ, &data);
+                      if (reactor_unlikely(data.size))
+                        buffer_insert(&stream->input, buffer_size(&stream->input), data.base, data.size);
+                    }
+                  else
+                    {
+                      buffer_insert(&stream->input, buffer_size(&stream->input), buffer, n);
+                      data = (reactor_stream_data) {.base = buffer_data(&stream->input), .size = buffer_size(&stream->input)};
+                      reactor_user_dispatch(&stream->user, REACTOR_STREAM_EVENT_READ, &data);
+                      buffer_erase(&stream->input, 0, buffer_size(&stream->input) - data.size);
+                    }
                 }
             }
         }
+      reactor_stream_release(stream);
     }
-  reactor_stream_release(stream);
 }
 
 void reactor_stream_hold(reactor_stream *stream)
@@ -133,7 +146,7 @@ void reactor_stream_close(reactor_stream *stream)
 
 void reactor_stream_write(reactor_stream *stream, void *data, size_t size)
 {
-  buffer_insert(&stream->output, buffer_size(&stream->output), data, size);
+  buffer_insert(&stream->output, buffer_size(&stream->output), (void *) data, size);
 }
 
 void reactor_stream_write_unsigned(reactor_stream *stream, uint32_t n)
@@ -179,7 +192,10 @@ void reactor_stream_flush(reactor_stream *stream)
   errno = 0;
   base = buffer_data(&stream->output);
   size = buffer_size(&stream->output);
-  while (size)
+  if (!size)
+    return;
+
+  do
     {
       n = write(stream->fd, base, size);
       if (reactor_unlikely(n == -1))
@@ -187,6 +203,8 @@ void reactor_stream_flush(reactor_stream *stream)
       base += n;
       size -= n;
     }
+  while (size);
+
   buffer_erase(&stream->output, 0, buffer_size(&stream->output) - size);
   if (reactor_unlikely(buffer_size(&stream->output) == 0))
     {

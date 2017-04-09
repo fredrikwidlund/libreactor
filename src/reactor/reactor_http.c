@@ -12,6 +12,7 @@
 
 #include <dynamic.h>
 
+#include "reactor_memory.h"
 #include "reactor_util.h"
 #include "reactor_user.h"
 #include "reactor_pool.h"
@@ -41,7 +42,7 @@ static void reactor_http_client_event(void *state, int type, void *data)
         {
           response.header_count = REACTOR_HTTP_HEADERS_MAX;
           response.headers = headers;
-          e = reactor_http_parser_read_response(&http->parser, &response, data);
+          e = reactor_http_parser_response(&http->parser, &response, data);
           if (reactor_unlikely(e == -1))
             {
               reactor_http_error(http);
@@ -79,7 +80,7 @@ static void reactor_http_server_event(void *state, int type, void *data)
         {
           request.header_count = REACTOR_HTTP_HEADERS_MAX;
           request.headers = headers;
-          e = reactor_http_parser_read_request(&http->parser, &request, data);
+          e = reactor_http_parser_request(&http->parser, &request, data);
           if (reactor_unlikely(e == -1))
             {
               reactor_http_error(http);
@@ -144,38 +145,38 @@ void reactor_http_write_request(reactor_http *http, reactor_http_request *reques
 {
   reactor_http_write_request_line(http, request->method, request->path, request->version);
   reactor_http_write_headers(http, request->headers, request->header_count);
-  if (reactor_unlikely(request->size))
-    reactor_http_write_content_length(http, request->size);
+  if (reactor_unlikely(request->body.size))
+    reactor_http_write_content_length(http, request->body.size);
   reactor_http_write_end(http);
-  if (reactor_unlikely(request->size))
-    reactor_http_write_body(http, request->data, request->size);
+  if (reactor_unlikely(request->body.size))
+    reactor_http_write_body(http, request->body);
 }
 
 void reactor_http_write_response(reactor_http *http, reactor_http_response *response)
 {
   reactor_http_write_status_line(http, response->version, response->status, response->reason);
   reactor_http_write_headers(http, response->headers, response->header_count);
-  reactor_http_write_content_length(http, response->size);
+  reactor_http_write_content_length(http, response->body.size);
   reactor_http_write_end(http);
-  if (reactor_likely(response->size))
-    reactor_http_write_body(http, response->data, response->size);
+  if (reactor_likely(response->body.size))
+    reactor_http_write_body(http, response->body);
 }
 
-void reactor_http_write_request_line(reactor_http *http, char *method, char *path, int version)
+void reactor_http_write_request_line(reactor_http *http, reactor_memory method, reactor_memory path, int version)
 {
-  reactor_stream_write(&http->stream, method, strlen(method));
+  reactor_stream_write(&http->stream, (void *) reactor_memory_base(method), reactor_memory_size(method));
   reactor_stream_write(&http->stream, " ", 1);
-  reactor_stream_write(&http->stream, path, strlen(path));
+  reactor_stream_write(&http->stream, (void *) reactor_memory_base(path), reactor_memory_size(path));
   reactor_stream_write(&http->stream, " ", 1);
   reactor_stream_write(&http->stream, version ? "HTTP/1.1\r\n" : "HTTP/1.0\r\n", 10);
 }
 
-void reactor_http_write_status_line(reactor_http *http, int version, int status, char *reason)
+void reactor_http_write_status_line(reactor_http *http, int version, int status, reactor_memory reason)
 {
   reactor_stream_write(&http->stream, version ? "HTTP/1.1 " : "HTTP/1.0 ", 9);
   reactor_stream_write_unsigned(&http->stream, status);
   reactor_stream_write(&http->stream, " ", 1);
-  reactor_stream_write(&http->stream, reason, strlen(reason));
+  reactor_stream_write(&http->stream, (void *) reactor_memory_base(reason), reactor_memory_size(reason));
   reactor_stream_write(&http->stream, "\r\n", 2);
 }
 
@@ -185,9 +186,9 @@ void reactor_http_write_headers(reactor_http *http, reactor_http_header *headers
 
   for (i = 0; i < count; i ++)
     {
-      reactor_stream_write(&http->stream, headers[i].name, strlen(headers[i].name));
+      reactor_stream_write(&http->stream, (void *) reactor_memory_base(headers[i].name), reactor_memory_size(headers[i].name));
       reactor_stream_write(&http->stream, ": ", 2);
-      reactor_stream_write(&http->stream, headers[i].value, strlen(headers[i].value));
+      reactor_stream_write(&http->stream, (void *) reactor_memory_base(headers[i].value), reactor_memory_size(headers[i].value));
       reactor_stream_write(&http->stream, "\r\n", 2);
     }
 }
@@ -204,9 +205,9 @@ void reactor_http_write_end(reactor_http *http)
   reactor_stream_write(&http->stream, "\r\n", 2);
 }
 
-void reactor_http_write_body(reactor_http *http, void *base, size_t size)
+void reactor_http_write_body(reactor_http *http, reactor_memory body)
 {
-  reactor_stream_write(&http->stream, base, size);
+  reactor_stream_write(&http->stream, (void *) reactor_memory_base(body), reactor_memory_size(body));
 }
 
 void reactor_http_flush(reactor_http *http)
