@@ -46,7 +46,7 @@ int reactor_http_parser_request(reactor_http_parser *parser, reactor_http_reques
   if (reactor_likely(!parser->complete_size))
     {
       for (i = 0; i < request->header_count; i ++)
-        if (reactor_memory_equal_case(request->headers[i].name, reactor_memory_str("content_length")))
+        if (reactor_memory_equal_case(request->headers[i].name, reactor_memory_str("content-length")))
           body_size = strtoul(reactor_memory_base(request->headers[i].value), NULL, 10);
 
       parser->complete_size = header_size + body_size;
@@ -84,7 +84,7 @@ int reactor_http_parser_response(reactor_http_parser *parser, reactor_http_respo
   if (reactor_likely(!parser->complete_size))
     {
       for (i = 0; i < response->header_count; i ++)
-        if (reactor_memory_equal_case(response->headers[i].name, reactor_memory_str("content_length")))
+        if (reactor_memory_equal_case(response->headers[i].name, reactor_memory_str("content-length")))
           body_size = strtoul(reactor_memory_base(response->headers[i].value), NULL, 10);
       if (reactor_unlikely(body_size == -1))
         return -1;
