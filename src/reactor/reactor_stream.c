@@ -42,8 +42,14 @@ static void reactor_stream_event(void *state, int type, void *arg)
   if (reactor_likely(revents == POLLIN && !buffer_size(&stream->input)))
     {
       n = read(stream->fd, buffer, sizeof buffer);
-      if (n <= 0)
-        return;
+      if (reactor_unlikely(n <= 0))
+        {
+          if (n == 0)
+            reactor_user_dispatch(&stream->user, REACTOR_STREAM_EVENT_HANGUP, NULL);
+          else if (errno != EAGAIN)
+            reactor_stream_error(stream);
+          return;
+        }
       data = (reactor_stream_data) {.base = buffer, .size = n};
       reactor_user_dispatch(&stream->user, REACTOR_STREAM_EVENT_READ, &data);
       if (reactor_unlikely(data.size))
