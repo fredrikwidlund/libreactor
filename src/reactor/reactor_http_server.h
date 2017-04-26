@@ -58,6 +58,8 @@ struct reactor_http_server_context
 void reactor_http_server_open(reactor_http_server *, reactor_user_callback *, void *, char *, char *);
 void reactor_http_server_close(reactor_http_server *);
 void reactor_http_server_route(reactor_http_server *, reactor_user_callback *, void *, char *, char *);
+void reactor_http_server_respond_body(reactor_http_server_session *, int, char *, char *, void *, size_t);
+void reactor_http_server_respond_empty(reactor_http_server_session *, int, char *);
 void reactor_http_server_respond_mime(reactor_http_server_session *, char *, void *, size_t);
 void reactor_http_server_respond_text(reactor_http_server_session *, char *);
 

@@ -79,6 +79,8 @@ static void reactor_http_server_request(reactor_http_server_session *session, re
           return;
         }
     }
+
+  reactor_http_server_respond_empty(session, 404, "Not Found");
 }
 
 static void reactor_http_server_event_http(void *state, int type, void *data)
@@ -168,18 +170,36 @@ void reactor_http_server_route(reactor_http_server *server, reactor_user_callbac
         .path = reactor_memory_str(path)}});
 }
 
-void reactor_http_server_respond_mime(reactor_http_server_session *session, char *type, void *body, size_t size)
+void reactor_http_server_respond_body(reactor_http_server_session *session, int status, char *reason, char *type, void *body, size_t size)
 {
   reactor_http_write_response(&session->http, (reactor_http_response[]){{
         .version = 1,
-        .status = 200,
-        .reason = reactor_memory_str("OK"),
+        .status = status,
+        .reason = reactor_memory_str(reason),
         .header_count = 3,
         .headers = (reactor_http_header[]){
           {.name = reactor_memory_str("Server"), .value = reactor_memory_str(session->server->name)},
           {.name = reactor_memory_str("Date"), .value = reactor_memory_str(session->server->date)},
           {.name = reactor_memory_str("Content-Type"), .value = reactor_memory_str(type)}
         }, reactor_memory_ref(body, size)}});
+}
+
+void reactor_http_server_respond_empty(reactor_http_server_session *session, int status, char *reason)
+{
+  reactor_http_write_response(&session->http, (reactor_http_response[]){{
+        .version = 1,
+        .status = status,
+        .reason = reactor_memory_str(reason),
+        .header_count = 2,
+        .headers = (reactor_http_header[]){
+          {.name = reactor_memory_str("Server"), .value = reactor_memory_str(session->server->name)},
+          {.name = reactor_memory_str("Date"), .value = reactor_memory_str(session->server->date)}
+        }, reactor_memory_ref(NULL, 0)}});
+}
+
+void reactor_http_server_respond_mime(reactor_http_server_session *session, char *type, void *body, size_t size)
+{
+  reactor_http_server_respond_body(session, 200, "OK", type, body, size);
 }
 
 void reactor_http_server_respond_text(reactor_http_server_session *session, char *text)
