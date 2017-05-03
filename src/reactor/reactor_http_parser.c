@@ -54,7 +54,7 @@ int reactor_http_parser_request(reactor_http_parser *parser, reactor_http_reques
         return 0;
     }
 
-  request->body = reactor_memory_ref((char *) reactor_stream_data_base(data) + header_size, body_size);
+  request->body = reactor_memory_ref((char *) reactor_stream_data_base(data) + header_size, parser->complete_size - header_size);
   reactor_stream_data_consume(data, parser->complete_size);
   parser->complete_size = 0;
   return 1;
@@ -94,7 +94,7 @@ int reactor_http_parser_response(reactor_http_parser *parser, reactor_http_respo
         return 0;
     }
 
-  response->body = reactor_memory_ref((char *) reactor_stream_data_base(data) + header_size, body_size);
+  response->body = reactor_memory_ref((char *) reactor_stream_data_base(data) + header_size, parser->complete_size - header_size);
   reactor_stream_data_consume(data, parser->complete_size);
   parser->complete_size = 0;
   return 1;
