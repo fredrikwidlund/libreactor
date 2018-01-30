@@ -28,7 +28,7 @@ install:
   - sudo make -C lcov-1.11/ install
   - gem install coveralls-lcov
   - cd ${TRAVIS_BUILD_DIR}
-  - wget https://github.com/fredrikwidlund/libdynamic/releases/download/v1.0.0/libdynamic-1.1.0.tar.gz
+  - wget https://github.com/fredrikwidlund/libdynamic/releases/download/v1.1.0/libdynamic-1.1.0.tar.gz
   - tar -xvf libdynamic-1.1.0.tar.gz
   - cd libdynamic-1.1.0
   - ./configure
