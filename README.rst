@@ -7,8 +7,6 @@ README
 .. image:: https://coveralls.io/repos/github/fredrikwidlund/libreactor/badge.svg?branch=master
   :target: https://coveralls.io/github/fredrikwidlund/libreactor?branch=master
 
-Documentation is available at http://libreactor.readthedocs.io/en/latest/.
-
 Compiling and installing
 ========================
 
@@ -17,7 +15,7 @@ compiling and installing is simple:
 
 .. code-block:: shell
 
-    $ ./configure
+    $ ./configure AR=gcc-ar NM=gcc-nm RANLIB=gcc-ranlib
     $ make
     $ make install
 
