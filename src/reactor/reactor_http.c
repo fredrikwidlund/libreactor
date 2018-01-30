@@ -1,216 +1,639 @@
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
-#include <fcntl.h>
+#include <time.h>
+#include <sys/param.h>
 #include <netdb.h>
-#include <errno.h>
-#include <poll.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/queue.h>
 
 #include <dynamic.h>
 
-#include "reactor_memory.h"
+#include "picohttpparser/picohttpparser.h"
 #include "reactor_util.h"
 #include "reactor_user.h"
-#include "reactor_pool.h"
 #include "reactor_core.h"
-#include "reactor_resolver.h"
+#include "reactor_descriptor.h"
 #include "reactor_stream.h"
-#include "reactor_tcp.h"
-#include "reactor_http_parser.h"
 #include "reactor_http.h"
 
-static void reactor_http_error(reactor_http *http)
+/* reactor_http_error */
+
+static int reactor_http_error(reactor_http *http)
 {
-  reactor_user_dispatch(&http->user, REACTOR_HTTP_EVENT_ERROR, NULL);
+  return reactor_user_dispatch(&http->user, REACTOR_HTTP_EVENT_ERROR, NULL);
 }
 
-static void reactor_http_client_event(void *state, int type, void *data)
-{
-  reactor_http *http = state;
-  reactor_http_header headers[REACTOR_HTTP_HEADERS_MAX];
-  reactor_http_response response;
-  int e;
+/* reactor_http_parse */
 
-  switch (type)
+static ssize_t reactor_http_parse_chunk(struct iovec *data, struct iovec *chunk)
+{
+  char *p;
+
+  p = memchr(data->iov_base, '\n', data->iov_len);
+  if (!p)
+    return 0;
+  p ++;
+  chunk->iov_base = p;
+  chunk->iov_len = strtoull(data->iov_base, NULL, 16);
+  if (chunk->iov_len >= REACTOR_HTTP_MAX_CHUNK_SIZE)
+    return -1;
+  p += chunk->iov_len + 2;
+  if (p > (char *) data->iov_base + data->iov_len)
+    return 0;
+  if (strncmp(p - 2, "\r\n", 2) != 0)
+    return -1;
+  return p - (char *) data->iov_base;
+}
+
+static ssize_t reactor_http_parse_chunks(struct iovec *data, struct iovec *content)
+{
+  ssize_t n;
+  struct iovec segment = *data, chunk;
+
+  if (content)
+    *content = (struct iovec) {segment.iov_base, 0};
+
+  while (segment.iov_len)
     {
-    case REACTOR_STREAM_EVENT_READ:
-      while (reactor_stream_data_size(data))
+      n = reactor_http_parse_chunk(&segment, &chunk);
+      if (n <= 0)
+        return n == 0 ? 0 : -1;
+      segment.iov_base = (char *) segment.iov_base + n;
+      segment.iov_len -= n;
+      if (!chunk.iov_len)
+        return (char *) segment.iov_base - (char *) data->iov_base;
+      if (content)
         {
-          response.header_count = REACTOR_HTTP_HEADERS_MAX;
-          response.headers = headers;
-          e = reactor_http_parser_response(&http->parser, &response, data);
-          if (reactor_unlikely(e == -1))
-            {
-              reactor_http_error(http);
-              break;
-            }
-
-          if (reactor_unlikely(e == 0))
-            break;
-
-          reactor_user_dispatch(&http->user, REACTOR_HTTP_EVENT_RESPONSE, &response);
+          memmove((char *) content->iov_base + content->iov_len, chunk.iov_base, chunk.iov_len);
+          content->iov_len += chunk.iov_len;
         }
-      break;
-    case REACTOR_STREAM_EVENT_ERROR:
-      reactor_http_error(http);
-      break;
-    case REACTOR_STREAM_EVENT_HANGUP:
-      reactor_user_dispatch(&http->user, REACTOR_HTTP_EVENT_HANGUP, NULL);
-      break;
-    case REACTOR_STREAM_EVENT_CLOSE:
-      reactor_http_release(http);
     }
+
+  return 0;
 }
 
-static void reactor_http_server_event(void *state, int type, void *data)
+static ssize_t reactor_http_parse_response_headers(struct iovec *data, reactor_http_response *response)
 {
-  reactor_http *http = state;
-  reactor_http_header headers[REACTOR_HTTP_HEADERS_MAX];
+  response->headers = REACTOR_HTTP_MAX_HEADERS;
+  response->body = (struct iovec) {0};
+  return phr_parse_response(data->iov_base, data->iov_len,
+                            &response->version, &response->status,
+                            (const char **) &response->reason.iov_base, &response->reason.iov_len,
+                            (struct phr_header *) response->header, &response->headers, 0);
+}
+
+static ssize_t reactor_http_parse_request_headers(struct iovec *data, reactor_http_request *request)
+{
+  request->headers = REACTOR_HTTP_MAX_HEADERS;
+  request->body = (struct iovec) {0};
+  return phr_parse_request(data->iov_base, data->iov_len,
+                           (const char **) &request->method.iov_base, &request->method.iov_len,
+                           (const char **) &request->path.iov_base, &request->path.iov_len,
+                           &request->version,
+                           (struct phr_header *) request->header, &request->headers, 0);
+}
+
+static ssize_t reactor_http_parse_response(struct iovec *data, reactor_http_response *response)
+{
+  ssize_t n;
+  size_t header_size;
+  struct iovec *value, segment;
+
+  n = reactor_http_parse_response_headers(data, response);
+  if (reactor_unlikely(n <= 0))
+    return n == -2 ? 0 : -1;
+  header_size = n;
+
+  value = reactor_http_header_get(response->header, response->headers, "Content-Length");
+  if (reactor_unlikely(value))
+    {
+      response->body.iov_base = (char *) data->iov_base + header_size;
+      response->body.iov_len = strtoull(value->iov_base, NULL, 10);
+      if (response->body.iov_len > data->iov_len - header_size)
+        return 0;
+      return header_size + response->body.iov_len;
+    }
+
+  value = reactor_http_header_get(response->header, response->headers, "Transfer-Encoding");
+  if (reactor_http_header_value(value, "chunked"))
+    {
+      segment.iov_base = (char *) data->iov_base + header_size;
+      segment.iov_len = data->iov_len - header_size;
+      n = reactor_http_parse_chunks(&segment, NULL);
+      if (n <= 0)
+        return n == 0 ? 0 : -1;
+      n = reactor_http_parse_chunks(&segment, &response->body);
+      return header_size + n;
+    }
+
+  return -1;
+}
+
+static ssize_t reactor_http_parse_request(struct iovec *data, reactor_http_request *request)
+{
+  ssize_t n;
+  size_t header_size;
+  struct iovec *value, segment;
+
+  n = reactor_http_parse_request_headers(data, request);
+  if (reactor_unlikely(n <= 0))
+    return n == -2 ? 0 : -1;
+  header_size = n;
+
+  value = reactor_http_header_get(request->header, request->headers, "Content-Length");
+  if (reactor_unlikely(value))
+    {
+      request->body.iov_base = (char *) data->iov_base + header_size;
+      request->body.iov_len = strtoull(value->iov_base, NULL, 10);
+      if (request->body.iov_len > data->iov_len - header_size)
+        return 0;
+      return header_size + request->body.iov_len;
+    }
+
+  value = reactor_http_header_get(request->header, request->headers, "Transfer-Encoding");
+  if (reactor_unlikely(value))
+    {
+      if (!reactor_http_header_value(value, "chunked"))
+        return -1;
+
+      segment.iov_base = (char *) data->iov_base + header_size;
+      segment.iov_len = data->iov_len - header_size;
+      n = reactor_http_parse_chunks(&segment, NULL);
+      if (n <= 0)
+        return n == 0 ? 0 : -1;
+      n = reactor_http_parse_chunks(&segment, &request->body);
+      return header_size + n;
+    }
+
+  return header_size;
+}
+
+/* reactor_http_request */
+
+static size_t reactor_http_request_size(reactor_http_request *request)
+{
+  size_t size, i;
+
+  size = 14 + request->method.iov_len + request->path.iov_len + (request->headers * 4) + request->body.iov_len;
+  for (i = 0; i < request->headers; i ++)
+    size += request->header[i].name.iov_len + request->header[i].value.iov_len;
+  return size;
+}
+
+static void reactor_http_request_write(reactor_http_request *request, void *base)
+{
+  char *p = base;
+  size_t i;
+
+  memcpy(p, request->method.iov_base, request->method.iov_len);
+  p += request->method.iov_len;
+  *p ++ = ' ';
+  memcpy(p, request->path.iov_base, request->path.iov_len);
+  p += request->path.iov_len;
+  memcpy(p, " HTTP/1.0\r\n", 11);
+  p[8] = request->version + '0';
+  p += 11;
+  for (i = 0; i < request->headers; i ++)
+    {
+      memcpy(p, request->header[i].name.iov_base, request->header[i].name.iov_len);
+      p += request->header[i].name.iov_len;
+      *p ++ = ':';
+      *p ++ = ' ';
+      memcpy(p, request->header[i].value.iov_base, request->header[i].value.iov_len);
+      p += request->header[i].value.iov_len;
+      *p ++ = '\r';
+      *p ++ = '\n';
+    }
+  *p ++ = '\r';
+  *p ++ = '\n';
+  memcpy(p, request->body.iov_base, request->body.iov_len);
+}
+
+/* reactor_http_response */
+
+static size_t reactor_http_response_size(reactor_http_response *response)
+{
+  size_t size, i;
+
+  size = 17 + response->reason.iov_len + (response->headers * 4) + response->body.iov_len;
+  for (i = 0; i < response->headers; i ++)
+    size += response->header[i].name.iov_len + response->header[i].value.iov_len;
+  return size;
+}
+
+static void reactor_http_response_write(reactor_http_response *response, void *base)
+{
+  char *p = base;
+  size_t i;
+
+  memcpy(p, "HTTP/1.0 500 ", 13);
+  p[7] = response->version + '0';
+  p += 12;
+  reactor_util_u32sprint(response->status, p);
+  p ++;
+  memcpy(p, response->reason.iov_base, response->reason.iov_len);
+  p += response->reason.iov_len;
+  *p ++ = '\r';
+  *p ++ = '\n';
+  for (i = 0; i < response->headers; i ++)
+    {
+      memcpy(p, response->header[i].name.iov_base, response->header[i].name.iov_len);
+      p += response->header[i].name.iov_len;
+      *p ++ = ':';
+      *p ++ = ' ';
+      memcpy(p, response->header[i].value.iov_base, response->header[i].value.iov_len);
+      p += response->header[i].value.iov_len;
+      *p ++ = '\r';
+      *p ++ = '\n';
+    }
+  *p ++ = '\r';
+  *p ++ = '\n';
+  memcpy(p, response->body.iov_base, response->body.iov_len);
+}
+
+/* reactor_http_server */
+
+static int reactor_http_server_stream(reactor_http *http, struct iovec *data)
+{
   reactor_http_request request;
+  ssize_t n;
   int e;
+  struct iovec *value, chunk;
 
-  switch (type)
+  while (1)
     {
-    case REACTOR_STREAM_EVENT_READ:
-      while (reactor_stream_data_size(data))
+      switch (http->state)
         {
-          request.header_count = REACTOR_HTTP_HEADERS_MAX;
-          request.headers = headers;
-          e = reactor_http_parser_request(&http->parser, &request, data);
-          if (reactor_unlikely(e == -1))
+        case REACTOR_HTTP_STATE_HEADER:
+          n = reactor_http_parse_request_headers(data, &request);
+          if (reactor_unlikely(n <= 0))
+            return n == -2 ? REACTOR_OK : reactor_http_error(http);
+          data->iov_base = (char *) data->iov_base + n;
+          data->iov_len -= n;
+
+          e = reactor_user_dispatch(&http->user, REACTOR_HTTP_EVENT_REQUEST_HEADER, &request);
+          if (e == REACTOR_ABORT)
+            return REACTOR_ABORT;
+
+          http->remaining = 0;
+          value = reactor_http_header_get(request.header, request.headers, "Content-Length");
+          if (value)
+            http->remaining = strtoul(value->iov_base, NULL, 0);
+
+          value = reactor_http_header_get(request.header, request.headers, "Transfer-Encoding");
+          if (reactor_unlikely(value))
             {
-              reactor_http_error(http);
+              if (!reactor_http_header_value(value, "chunked"))
+                return reactor_http_error(http);
+              http->state = REACTOR_HTTP_STATE_CHUNK;
               break;
             }
 
-          if (reactor_unlikely(e == 0))
-            break;
+          http->state = REACTOR_HTTP_STATE_DATA;
+          /* fall through */
+        case REACTOR_HTTP_STATE_DATA:
+          n = MIN(data->iov_len, http->remaining);
+          if (n)
+            {
+              e = reactor_user_dispatch(&http->user, REACTOR_HTTP_EVENT_REQUEST_DATA,
+                                        (struct iovec []){{.iov_base = data->iov_base, .iov_len = n}});
+              if (e != REACTOR_OK)
+                return REACTOR_ABORT;
+              data->iov_base = (char *) data->iov_base + n;
+              data->iov_len -= n;
+              http->remaining -= n;
+            }
 
-          reactor_user_dispatch(&http->user, REACTOR_HTTP_EVENT_REQUEST, &request);
+          if (!http->remaining)
+            {
+              e = reactor_user_dispatch(&http->user, REACTOR_HTTP_EVENT_REQUEST_END, NULL);
+              if (e != REACTOR_OK)
+                return REACTOR_ABORT;
+              http->state = REACTOR_HTTP_STATE_HEADER;
+            }
+
+          if (!data->iov_len)
+            return reactor_http_flush(http);
+          break;
+        case REACTOR_HTTP_STATE_CHUNK:
+          n = reactor_http_parse_chunk(data, &chunk);
+          if (reactor_unlikely(n <= 0))
+            return n == 0 ? REACTOR_OK : reactor_http_error(http);
+
+          if (chunk.iov_len)
+            e = reactor_user_dispatch(&http->user, REACTOR_HTTP_EVENT_REQUEST_DATA, &chunk);
+          else
+            {
+              http->state = REACTOR_HTTP_STATE_HEADER;
+              e = reactor_user_dispatch(&http->user, REACTOR_HTTP_EVENT_REQUEST_END, NULL);
+            }
+          if (e != REACTOR_OK)
+            return REACTOR_ABORT;
+
+          data->iov_base = (char *) data->iov_base + n;
+          data->iov_len -= n;
+          if (!data->iov_len)
+            return reactor_http_flush(http);
+          break;
+        default:
+          return reactor_http_error(http);
         }
-      reactor_http_flush(http);
-      break;
-    case REACTOR_STREAM_EVENT_ERROR:
-      reactor_http_error(http);
-      break;
-    case REACTOR_STREAM_EVENT_HANGUP:
-      reactor_user_dispatch(&http->user, REACTOR_HTTP_EVENT_HANGUP, NULL);
-      break;
-    case REACTOR_STREAM_EVENT_CLOSE:
-      reactor_http_release( http);
     }
 }
 
-void reactor_http_hold(reactor_http *http)
+static int reactor_http_server_read(reactor_http *http, struct iovec *data)
 {
-  http->ref ++;
-}
+  reactor_http_request request;
+  ssize_t n;
+  int e;
 
-void reactor_http_release(reactor_http *http)
-{
-  http->ref --;
-  if (reactor_unlikely(!http->ref))
+  while (data->iov_len)
     {
-      http->state = REACTOR_HTTP_STATE_CLOSED;
-      reactor_user_dispatch(&http->user, REACTOR_HTTP_EVENT_CLOSE, NULL);
+      n = reactor_http_parse_request(data, &request);
+      if (reactor_unlikely(n <= 0))
+        {
+          if (n == 0)
+            break;
+          return reactor_http_error(http);
+        }
+      e = reactor_user_dispatch(&http->user, REACTOR_HTTP_EVENT_REQUEST, &request);
+      if (e != REACTOR_OK)
+        return REACTOR_ABORT;
+      data->iov_base = (char *) data->iov_base + n;
+      data->iov_len -= n;
+    }
+
+  return reactor_http_flush(http);
+}
+
+static int reactor_http_server_stream_event(void *state, int type, void *data)
+{
+  reactor_http *http = state;
+
+  if (reactor_likely(type == REACTOR_STREAM_EVENT_READ))
+    return reactor_http_server_stream(http, data);
+  switch (type)
+    {
+    case REACTOR_STREAM_EVENT_CLOSE:
+      return reactor_user_dispatch(&http->user, REACTOR_HTTP_EVENT_CLOSE, NULL);
+    case REACTOR_STREAM_EVENT_WRITE:
+      return REACTOR_OK;
+    default:
+      return reactor_http_error(http);
     }
 }
 
-void reactor_http_open(reactor_http *http, reactor_user_callback *callback, void *state, int socket, int flags)
+static int reactor_http_server_event(void *state, int type, void *data)
 {
-  http->ref = 0;
-  http->state = REACTOR_HTTP_STATE_OPEN;
-  http->flags = flags;
+  reactor_http *http = state;
+
+  if (reactor_likely(type == REACTOR_STREAM_EVENT_READ))
+    return reactor_http_server_read(http, data);
+  switch (type)
+    {
+    case REACTOR_STREAM_EVENT_CLOSE:
+      return reactor_user_dispatch(&http->user, REACTOR_HTTP_EVENT_CLOSE, NULL);
+    case REACTOR_STREAM_EVENT_WRITE:
+      return REACTOR_OK;
+    default:
+      return reactor_http_error(http);
+    }
+}
+
+/* reactor_http_client */
+
+static int reactor_http_client_stream(reactor_http *http, struct iovec *data)
+{
+  reactor_http_response response;
+  ssize_t n;
+  int e;
+  struct iovec *value, chunk;
+
+  while (1)
+    {
+      switch (http->state)
+        {
+        case REACTOR_HTTP_STATE_HEADER:
+          n = reactor_http_parse_response_headers(data, &response);
+          if (reactor_unlikely(n <= 0))
+            return n == -2 ? REACTOR_OK : reactor_http_error(http);
+          data->iov_base = (char *) data->iov_base + n;
+          data->iov_len -= n;
+
+          e = reactor_user_dispatch(&http->user, REACTOR_HTTP_EVENT_RESPONSE_HEADER, &response);
+          if (e == REACTOR_ABORT)
+            return REACTOR_ABORT;
+
+          value = reactor_http_header_get(response.header, response.headers, "Content-Length");
+          if (value)
+            {
+              http->remaining = strtoul(value->iov_base, NULL, 0);
+              http->state = REACTOR_HTTP_STATE_DATA;
+              break;
+            }
+
+          value = reactor_http_header_get(response.header, response.headers, "Transfer-Encoding");
+          if (reactor_http_header_value(value, "chunked"))
+            {
+              http->state = REACTOR_HTTP_STATE_CHUNK;
+              break;
+            }
+
+          return reactor_http_error(http);
+        case REACTOR_HTTP_STATE_DATA:
+          n = MIN(data->iov_len, http->remaining);
+          if (n)
+            {
+              e = reactor_user_dispatch(&http->user, REACTOR_HTTP_EVENT_RESPONSE_DATA,
+                                        (struct iovec []){{.iov_base = data->iov_base, .iov_len = n}});
+              if (e != REACTOR_OK)
+                return REACTOR_ABORT;
+              data->iov_base = (char *) data->iov_base + n;
+              data->iov_len -= n;
+              http->remaining -= n;
+            }
+
+          if (!http->remaining)
+            {
+              e = reactor_user_dispatch(&http->user, REACTOR_HTTP_EVENT_RESPONSE_END, NULL);
+              if (e != REACTOR_OK)
+                return REACTOR_ABORT;
+              http->state = REACTOR_HTTP_STATE_HEADER;
+            }
+
+          if (!data->iov_len)
+            return REACTOR_OK;
+          break;
+        case REACTOR_HTTP_STATE_CHUNK:
+          n = reactor_http_parse_chunk(data, &chunk);
+          if (reactor_unlikely(n <= 0))
+            return n == 0 ? REACTOR_OK : reactor_http_error(http);
+
+          if (chunk.iov_len)
+            e = reactor_user_dispatch(&http->user, REACTOR_HTTP_EVENT_RESPONSE_DATA, &chunk);
+          else
+            {
+              http->state = REACTOR_HTTP_STATE_HEADER;
+              e = reactor_user_dispatch(&http->user, REACTOR_HTTP_EVENT_RESPONSE_END, NULL);
+            }
+          if (e != REACTOR_OK)
+            return REACTOR_ABORT;
+
+          data->iov_base = (char *) data->iov_base + n;
+          data->iov_len -= n;
+          if (!data->iov_len)
+            return REACTOR_OK;
+          break;
+        default:
+          return reactor_http_error(http);
+        }
+    }
+}
+
+static int reactor_http_client_read(reactor_http *http, struct iovec *data)
+{
+  reactor_http_response response;
+  ssize_t n;
+  int e;
+
+  while (data->iov_len)
+    {
+      n = reactor_http_parse_response(data, &response);
+      if (reactor_unlikely(n <= 0))
+        return n == 0 ? REACTOR_OK : REACTOR_ERROR;
+
+      e = reactor_user_dispatch(&http->user, REACTOR_HTTP_EVENT_RESPONSE, &response);
+      if (e != REACTOR_OK)
+        return REACTOR_ABORT;
+
+      data->iov_base = (char *) data->iov_base + n;
+      data->iov_len -= n;
+    }
+
+  return REACTOR_OK;
+}
+
+static int reactor_http_client_event(void *state, int type, void *data)
+{
+  reactor_http *http = state;
+
+  if (reactor_likely(type == REACTOR_STREAM_EVENT_READ))
+    return reactor_http_client_read(http, data);
+  switch (type)
+    {
+    case REACTOR_STREAM_EVENT_CLOSE:
+      return reactor_user_dispatch(&http->user, REACTOR_HTTP_EVENT_CLOSE, NULL);
+    case REACTOR_STREAM_EVENT_WRITE:
+      return REACTOR_OK;
+    default:
+      return reactor_http_error(http);
+    }
+}
+
+static int reactor_http_client_stream_event(void *state, int type, void *data)
+{
+  reactor_http *http = state;
+
+  if (reactor_likely(type == REACTOR_STREAM_EVENT_READ))
+    return reactor_http_client_stream(http, data);
+  switch (type)
+    {
+    case REACTOR_STREAM_EVENT_CLOSE:
+      return reactor_user_dispatch(&http->user, REACTOR_HTTP_EVENT_CLOSE, NULL);
+    case REACTOR_STREAM_EVENT_WRITE:
+      return REACTOR_OK;
+    default:
+      return reactor_http_error(http);
+    }
+}
+
+/* reactor_http_date */
+
+void reactor_http_date(char *date)
+{
+  static const char *days[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+  static const char *months[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+  time_t t;
+  struct tm tm;
+
+  (void) time(&t);
+  (void) gmtime_r(&t, &tm);
+  (void) strftime(date, 30, "---, %d --- %Y %H:%M:%S GMT", &tm);
+  memcpy(date, days[tm.tm_wday], 3);
+  memcpy(date + 8, months[tm.tm_mon], 3);
+}
+
+/* reactor_http_header */
+
+struct iovec *reactor_http_header_get(reactor_http_header *header, size_t headers, char *name)
+{
+  size_t i;
+
+  for (i = 0; i < headers; i ++)
+    if (header[i].name.iov_len == strlen(name) &&
+        strncasecmp(header[i].name.iov_base, name, strlen(name)) == 0)
+      return &header[i].value;
+  return NULL;
+}
+
+int reactor_http_header_value(struct iovec *value, char *string)
+{
+  return value && value->iov_len == strlen(string) && strncasecmp(value->iov_base, string, strlen(string)) == 0;
+}
+
+/* reactor_http */
+
+int reactor_http_open(reactor_http *http, reactor_user_callback *callback, void *state, int fd, int flags)
+{
   reactor_user_construct(&http->user, callback, state);
-  reactor_http_parser_construct(&http->parser);
-  reactor_http_hold(http);
-  reactor_stream_open(&http->stream, flags & REACTOR_HTTP_FLAG_SERVER ?
-                      reactor_http_server_event : reactor_http_client_event, http, socket);
+  http->state = REACTOR_HTTP_STATE_HEADER;
+  http->remaining = 0;
+  switch (flags)
+    {
+    case REACTOR_HTTP_FLAG_CLIENT:
+      return reactor_stream_open(&http->stream, reactor_http_client_event, http, fd);
+    case REACTOR_HTTP_FLAG_CLIENT | REACTOR_HTTP_FLAG_STREAM:
+      return reactor_stream_open(&http->stream, reactor_http_client_stream_event, http, fd);
+    case REACTOR_HTTP_FLAG_SERVER:
+      return reactor_stream_open(&http->stream, reactor_http_server_event, http, fd);
+    case REACTOR_HTTP_FLAG_SERVER | REACTOR_HTTP_FLAG_STREAM:
+      return reactor_stream_open(&http->stream, reactor_http_server_stream_event, http, fd);
+    default:
+      return REACTOR_ERROR;
+    }
 }
 
 void reactor_http_close(reactor_http *http)
 {
-  if (http->state & (REACTOR_HTTP_STATE_CLOSED | REACTOR_HTTP_STATE_CLOSING))
-    return;
-
-  http->state = REACTOR_HTTP_STATE_CLOSING;
   reactor_stream_close(&http->stream);
 }
 
-void reactor_http_write_request(reactor_http *http, reactor_http_request *request)
+void reactor_http_send_request(reactor_http *http, reactor_http_request *request)
 {
-  reactor_http_write_request_line(http, request->method, request->path, request->version);
-  reactor_http_write_headers(http, request->headers, request->header_count);
-  if (reactor_unlikely(request->body.size))
-    reactor_http_write_content_length(http, request->body.size);
-  reactor_http_write_end(http);
-  if (reactor_unlikely(request->body.size))
-    reactor_http_write_body(http, request->body);
+  size_t size;
+  buffer *buffer;
+
+  size = reactor_http_request_size(request);
+  buffer = reactor_stream_buffer(&http->stream);
+  buffer_reserve(buffer, buffer_size(buffer) + size);
+  reactor_http_request_write(request, (char *) buffer_data(buffer) + buffer_size(buffer));
+  buffer->size += size;
 }
 
-void reactor_http_write_response(reactor_http *http, reactor_http_response *response)
+void reactor_http_send_response(reactor_http *http, reactor_http_response *response)
 {
-  reactor_http_write_status_line(http, response->version, response->status, response->reason);
-  reactor_http_write_headers(http, response->headers, response->header_count);
-  reactor_http_write_content_length(http, response->body.size);
-  reactor_http_write_end(http);
-  if (reactor_likely(response->body.size))
-    reactor_http_write_body(http, response->body);
+  size_t size;
+  buffer *buffer;
+
+  size = reactor_http_response_size(response);
+  buffer = reactor_stream_buffer(&http->stream);
+  buffer_reserve(buffer, buffer_size(buffer) + size);
+  reactor_http_response_write(response, (char *) buffer_data(buffer) + buffer_size(buffer));
+  buffer->size += size;
 }
 
-void reactor_http_write_request_line(reactor_http *http, reactor_memory method, reactor_memory path, int version)
+int reactor_http_flush(reactor_http *http)
 {
-  reactor_stream_write(&http->stream, (void *) reactor_memory_base(method), reactor_memory_size(method));
-  reactor_stream_write(&http->stream, " ", 1);
-  reactor_stream_write(&http->stream, (void *) reactor_memory_base(path), reactor_memory_size(path));
-  reactor_stream_write(&http->stream, " ", 1);
-  reactor_stream_write(&http->stream, version ? "HTTP/1.1\r\n" : "HTTP/1.0\r\n", 10);
-}
-
-void reactor_http_write_status_line(reactor_http *http, int version, int status, reactor_memory reason)
-{
-  reactor_stream_write(&http->stream, version ? "HTTP/1.1 " : "HTTP/1.0 ", 9);
-  reactor_stream_write_unsigned(&http->stream, status);
-  reactor_stream_write(&http->stream, " ", 1);
-  reactor_stream_write(&http->stream, (void *) reactor_memory_base(reason), reactor_memory_size(reason));
-  reactor_stream_write(&http->stream, "\r\n", 2);
-}
-
-void reactor_http_write_headers(reactor_http *http, reactor_http_header *headers, size_t count)
-{
-  size_t i;
-
-  for (i = 0; i < count; i ++)
-    {
-      reactor_stream_write(&http->stream, (void *) reactor_memory_base(headers[i].name), reactor_memory_size(headers[i].name));
-      reactor_stream_write(&http->stream, ": ", 2);
-      reactor_stream_write(&http->stream, (void *) reactor_memory_base(headers[i].value), reactor_memory_size(headers[i].value));
-      reactor_stream_write(&http->stream, "\r\n", 2);
-    }
-}
-
-void reactor_http_write_content_length(reactor_http *http, size_t size)
-{
-  reactor_stream_write(&http->stream, "Content-Length: ", 16);
-  reactor_stream_write_unsigned(&http->stream, size);
-  reactor_stream_write(&http->stream, "\r\n", 2);
-}
-
-void reactor_http_write_end(reactor_http *http)
-{
-  reactor_stream_write(&http->stream, "\r\n", 2);
-}
-
-void reactor_http_write_body(reactor_http *http, reactor_memory body)
-{
-  reactor_stream_write(&http->stream, (void *) reactor_memory_base(body), reactor_memory_size(body));
-}
-
-void reactor_http_flush(reactor_http *http)
-{
-  reactor_stream_flush(&http->stream);
+  return reactor_stream_flush(&http->stream);
 }

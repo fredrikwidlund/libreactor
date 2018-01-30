@@ -9,5 +9,5 @@ AM_PROG_AR
 AC_PROG_LIBTOOL
 AM_PROG_CC_C_O
 
-AC_CONFIG_FILES([Makefile docs/Makefile libreactor.pc])
+AC_CONFIG_FILES([Makefile libreactor.pc])
 AC_OUTPUT

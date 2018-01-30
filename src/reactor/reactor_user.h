@@ -1,7 +1,7 @@
 #ifndef REACTOR_USER_H_INCLUDED
 #define REACTOR_USER_H_INCLUDED
 
-typedef void                reactor_user_callback(void *, int, void *);
+typedef int                 reactor_user_callback(void *, int, void *);
 typedef struct reactor_user reactor_user;
 
 struct reactor_user
@@ -11,6 +11,6 @@ struct reactor_user
 };
 
 void reactor_user_construct(reactor_user *, reactor_user_callback *, void *);
-void reactor_user_dispatch(reactor_user *, int, void *);
+int  reactor_user_dispatch(reactor_user *, int, void *);
 
 #endif /* REACTOR_USER_H_INCLUDED */

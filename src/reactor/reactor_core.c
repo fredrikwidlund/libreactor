@@ -1,114 +1,117 @@
 #define _GNU_SOURCE
 
-#include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
 #include <unistd.h>
-#include <poll.h>
-#include <sched.h>
-#include <sys/socket.h>
-#include <sys/queue.h>
-#include <err.h>
+#include <fcntl.h>
+#include <signal.h>
+#include <sys/epoll.h>
 
 #include <dynamic.h>
 
 #include "reactor_util.h"
 #include "reactor_user.h"
-#include "reactor_pool.h"
+#include "reactor_descriptor.h"
 #include "reactor_core.h"
+#include "reactor_pool.h"
 
-typedef struct reactor_core reactor_core;
 struct reactor_core
 {
-  vector       polls;
-  vector       users;
-  reactor_pool pool;
+  int                 fd;
+  int                 events_active;
+  int                 events_current;
+  int                 events_received;
+  struct epoll_event  events[REACTOR_CORE_MAX_EVENTS];
+  reactor_pool        pool;
 };
 
-static __thread struct reactor_core core = {0};
+static __thread struct reactor_core core = {.fd = -1};
 
-static void reactor_core_grow(size_t size)
+int reactor_core_construct(void)
 {
-  size_t current;
+  int e;
 
-  current = vector_size(&core.polls);
-  if (size > current)
+  core = (struct reactor_core) {0};
+  core.fd = epoll_create1(EPOLL_CLOEXEC);
+  if (core.fd == -1)
+    return REACTOR_ERROR;
+
+  e = reactor_pool_construct(&core.pool);
+  if (e == -1)
     {
-      vector_insert_fill(&core.polls, current, size - current, (struct pollfd[]) {{.fd = -1}});
-      vector_insert_fill(&core.users, current, size - current, (reactor_user[]) {{0}});
+      (void) close(core.fd);
+      core.fd = -1;
+      return REACTOR_ERROR;
     }
+
+  return REACTOR_OK;
 }
 
-static void reactor_core_shrink(void)
+void reactor_core_destruct(void)
 {
-  while (vector_size(&core.polls) && (((struct pollfd *) vector_back(&core.polls))->fd == -1))
+  if (core.fd != -1)
     {
-      vector_pop_back(&core.polls);
-      vector_pop_back(&core.users);
+      close(core.fd);
+      core.fd = -1;
+      reactor_pool_destruct(&core.pool);
     }
-}
-
-void reactor_core_construct()
-{
-  vector_construct(&core.polls, sizeof (struct pollfd));
-  vector_construct(&core.users, sizeof (reactor_user));
-  reactor_pool_construct(&core.pool);
-}
-
-void reactor_core_destruct()
-{
-  reactor_pool_destruct(&core.pool);
-  vector_destruct(&core.polls);
-  vector_destruct(&core.users);
 }
 
 int reactor_core_run(void)
 {
-  int e;
-  size_t i;
-  struct pollfd *pollfd;
+  sigset_t set;
 
-  while (vector_size(&core.polls))
+  sigemptyset(&set);
+  while (core.events_active)
     {
-      e = poll(vector_data(&core.polls), vector_size(&core.polls), -1);
-      if (reactor_unlikely(e == -1))
-        return -1;
-
-      for (i = 0; i < vector_size(&core.polls); i ++)
-        {
-          pollfd = vector_data(&core.polls);
-          if (reactor_likely(pollfd[i].revents))
-            reactor_user_dispatch(vector_at(&core.users, i), REACTOR_CORE_EVENT_FD, &pollfd[i]);
-        }
+      core.events_received = epoll_pwait(core.fd, core.events, REACTOR_CORE_MAX_EVENTS, -1, &set);
+      if (core.events_received == -1)
+        return REACTOR_ERROR;
+      for (core.events_current = 0; core.events_current < core.events_received; core.events_current ++)
+        if (core.events[core.events_current].events)
+          (void) reactor_descriptor_event(core.events[core.events_current].data.ptr, core.events[core.events_current].events);
     }
 
-  return 0;
+  return REACTOR_OK;
 }
 
-void reactor_core_fd_register(int fd, reactor_user_callback *callback, void *state, int events)
+int reactor_core_add(reactor_descriptor *descriptor, int events)
 {
-  reactor_core_grow(fd + 1);
-  *(struct pollfd *) reactor_core_fd_poll(fd) = (struct pollfd) {.fd = fd, .events = events};
-  *(reactor_user *) reactor_core_fd_user(fd) = (reactor_user) {.callback = callback, .state = state};
+  int e;
+
+  (void) fcntl(reactor_descriptor_fd(descriptor), F_SETFL, O_NONBLOCK);
+  e = epoll_ctl(core.fd, EPOLL_CTL_ADD, reactor_descriptor_fd(descriptor),
+                (struct epoll_event[]){{.events = events, .data.ptr = descriptor}});
+  if (e == -1)
+    return REACTOR_ERROR;
+
+  core.events_active ++;
+  return REACTOR_OK;
 }
 
-void reactor_core_fd_deregister(int fd)
+void reactor_core_delete(reactor_descriptor *descriptor)
 {
-  *(struct pollfd *) reactor_core_fd_poll(fd) = (struct pollfd) {.fd = -1};
-  reactor_core_shrink();
+  (void) epoll_ctl(core.fd, EPOLL_CTL_DEL, reactor_descriptor_fd(descriptor), NULL);
+  reactor_core_flush(descriptor);
 }
 
-void *reactor_core_fd_poll(int fd)
+void reactor_core_modify(reactor_descriptor *descriptor, int events)
 {
-  return vector_at(&core.polls, fd);
+  (void) epoll_ctl(core.fd, EPOLL_CTL_MOD, reactor_descriptor_fd(descriptor),
+                   (struct epoll_event[]){{.events = events, .data.ptr = descriptor}});
 }
 
-void *reactor_core_fd_user(int fd)
+void reactor_core_flush(reactor_descriptor *descriptor)
 {
-  return vector_at(&core.users, fd);
+  ssize_t i;
+
+  core.events_active --;
+  for (i = core.events_current; i < core.events_received; i ++)
+    if (core.events[i].data.ptr == descriptor)
+      core.events[i].events = 0;
 }
 
-void reactor_core_job_register(reactor_user_callback *callback, void *state)
+void reactor_core_enqueue(reactor_user_callback *callback, void *state)
 {
   reactor_pool_enqueue(&core.pool, callback, state);
 }

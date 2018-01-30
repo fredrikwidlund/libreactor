@@ -10,18 +10,16 @@
 extern "C" {
 #endif
 
-#include "reactor/reactor_memory.h"
 #include "reactor/reactor_util.h"
 #include "reactor/reactor_user.h"
-#include "reactor/reactor_pool.h"
 #include "reactor/reactor_core.h"
+#include "reactor/reactor_descriptor.h"
+#include "reactor/reactor_pool.h"
 #include "reactor/reactor_timer.h"
 #include "reactor/reactor_stream.h"
 #include "reactor/reactor_resolver.h"
 #include "reactor/reactor_tcp.h"
-#include "reactor/reactor_http_parser.h"
 #include "reactor/reactor_http.h"
-#include "reactor/reactor_http_server.h"
 
 #ifdef __cplusplus
 }

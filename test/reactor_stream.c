@@ -1,265 +1,338 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
-#include <stdarg.h>
-#include <unistd.h>
 #include <fcntl.h>
-#include <errno.h>
-#include <setjmp.h>
+#include <unistd.h>
 #include <signal.h>
+#include <setjmp.h>
+#include <errno.h>
 #include <netdb.h>
-#include <poll.h>
-#include <sys/types.h>
+#include <sys/uio.h>
+#include <sys/epoll.h>
 #include <sys/socket.h>
-#include <sys/queue.h>
-#include <sys/param.h>
+#include <netinet/in.h>
 
 #include <cmocka.h>
 #include <dynamic.h>
 
 #include "reactor.h"
 
+extern int reactor_stream_event(void *, int, void *);
 extern int mock_read_failure;
+extern int mock_write_failure;
 
-static int reader_data = 0;
-static int reader_read = 0;
-static int reader_write = 0;
-static int reader_hangup = 0;
-static int reader_error = 0;
-static int reader_close = 0;
-
-void core_reader(void *state, int type, void *event_data)
+struct transport
 {
-  reactor_stream *stream = state;
-  reactor_stream_data *data = event_data;
+  reactor_stream stream;
+  size_t         read;
+};
 
-  switch(type)
+int transport_event(void *state, int type, void *data)
+{
+  struct transport *t = state;
+  struct iovec *iov;
+
+  switch (type)
     {
     case REACTOR_STREAM_EVENT_READ:
-      reader_data += data->size;
-      data->size = 0;
-      reader_read ++;
-      break;
+      iov = data;
+      assert_true(iov->iov_len <= t->read);
+      t->read -= iov->iov_len;
+      *iov = (struct iovec) {0};
+      if (!t->read && !reactor_stream_blocked(state))
+        {
+          reactor_stream_close(&t->stream);
+          return REACTOR_ABORT;
+        }
+      return REACTOR_OK;
     case REACTOR_STREAM_EVENT_WRITE:
-      reader_write ++;
-      break;
-    case REACTOR_STREAM_EVENT_HANGUP:
-      reader_hangup ++;
-      reactor_stream_close(stream);
-      break;
-    case REACTOR_STREAM_EVENT_ERROR:
-      reader_error ++;
-      reactor_stream_close(stream);
-      break;
+      assert_int_equal(reactor_stream_flush(state), REACTOR_OK);
+      if (!t->read && !reactor_stream_blocked(state))
+        {
+          reactor_stream_close(&t->stream);
+          return REACTOR_ABORT;
+        }
+      return REACTOR_OK;
     case REACTOR_STREAM_EVENT_CLOSE:
-      reader_close ++;
-      break;
+      reactor_stream_close(state);
+      return REACTOR_ABORT;
+    default:
+      assert_true(0);
+      return REACTOR_OK;
     }
 }
 
-void core_writer(void *state, int type, void *data)
+void transport_data(int fd[2], size_t size)
 {
-  reactor_stream *stream = state;
+  char *data;
+  struct transport t1, t2;
 
-  (void) data;
-  switch (type)
-    {
-    case REACTOR_STREAM_EVENT_ERROR:
-      break;
-    case REACTOR_STREAM_EVENT_WRITE:
-      reactor_stream_close(stream);
-      break;
-    }
+  data = calloc(1, size);
+  assert_true(data);
+  assert_int_equal(reactor_core_construct(), REACTOR_OK);
+  t1.read = size;
+  t2.read = size / 2;
+  assert_int_equal(reactor_stream_open(&t1.stream, transport_event, &t1, fd[0]), REACTOR_OK);
+  assert_true(reactor_stream_buffer(&t1.stream) != NULL);
+  assert_int_equal(reactor_stream_open(&t2.stream, transport_event, &t2, fd[1]), REACTOR_OK);
+  reactor_stream_write(&t1.stream, data, size / 2);
+  reactor_stream_write(&t2.stream, data, size);
+  assert_int_equal(reactor_stream_flush(&t1.stream), REACTOR_OK);
+  assert_int_equal(reactor_stream_flush(&t2.stream), REACTOR_OK);
+  assert_int_equal(reactor_core_run(), REACTOR_OK);
+  reactor_core_destruct();
+  free(data);
+}
+
+void transport_short(int fd[2])
+{
+  transport_data(fd, 16);
+}
+
+void transport_long(int fd[2])
+{
+  transport_data(fd, 16 * 1024 * 1024);
+}
+
+static void socket_pipe(int fd[2])
+{
+  assert_int_equal(pipe(fd), 0);
+}
+
+static void socket_socketpair(int fd[2])
+{
+  assert_int_equal(socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, AF_UNSPEC, fd), 0);
+}
+
+static void socket_tcp(int fd[2])
+{
+  struct sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = htonl(INADDR_LOOPBACK), .sin_port = htons(12346)};
+  int server;
+
+  server = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
+  assert_true(server >= 0);
+  (void) setsockopt(server, SOL_SOCKET, SO_REUSEPORT, (int[]){1}, sizeof(int));
+  assert_int_equal(bind(server, (struct sockaddr *) &sin, sizeof sin), 0);
+  assert_int_equal(listen(server, -1), 0);
+
+  fd[1] = socket(AF_INET, SOCK_STREAM, 0);
+  assert_true(fd[1] >= 0);
+  assert_int_equal(connect(fd[1], (struct sockaddr *) &sin, sizeof sin), 0);
+
+  fd[0] = accept(server, NULL, NULL);
+  assert_true(fd[0] >= 0);
+  assert_int_equal(close(server), 0);
 }
 
 void core()
 {
-  reactor_stream reader, writer;
-  int e, fds[2], fd;
+  int fd[2];
 
-  reactor_core_construct();
-
-  e = pipe(fds);
-  assert_int_equal(e, 0);
-  reactor_stream_open(&reader, core_reader, &reader, fds[0]);
-  reactor_stream_open(&writer, core_writer, &writer, fds[1]);
-  reactor_stream_hold(&writer);
-  reactor_stream_write(&writer, "test1", 5);
-  reactor_stream_write(&writer, "test2", 5);
-  reactor_stream_write(&writer, "test3", 5);
-  reactor_stream_close(&writer);
-  reactor_stream_release(&writer);
-
-  e = reactor_core_run();
-  assert_int_equal(e, 0);
-  assert_int_equal(reader_data, 15);
-
-  reader_error = 0;
-  reactor_stream_open(&reader, core_reader, &reader, 1000);
-  e = reactor_core_run();
-  assert_int_equal(e, 0);
-  assert_int_equal(reader_error, 1);
-
-  reactor_stream_open(&writer, core_writer, &writer, 1000);
-  reactor_stream_write(&writer, "test", 4);
-  reactor_stream_flush(&writer);
-  reactor_stream_close(&writer);
-
-  reactor_stream_open(&writer, core_writer, &writer, 1000);
-  reactor_stream_write(&writer, "test", 4);
-  reactor_stream_close(&writer);
-
-  fd = dup(1);
-  reactor_stream_open(&writer, core_writer, &writer, fd);
-  reactor_stream_write_notify(&writer);
-  e = reactor_core_run();
-  assert_int_equal(e, 0);
-
-  reactor_core_destruct();
+  socket_socketpair(fd);
+  transport_short(fd);
+  socket_socketpair(fd);
+  transport_long(fd);
+  socket_tcp(fd);
+  transport_short(fd);
+  socket_tcp(fd);
+  transport_long(fd);
 }
 
-struct pump_object
+struct error_state
 {
-  int blocked;
-  reactor_stream writer;
-  reactor_stream reader;
-  size_t write;
-  size_t read;
+  int            fd[2];
+  reactor_stream stream;
 };
 
-void pump_writer(void *state, int type, void *data)
+int error_event1(void *state, int type, void *data)
 {
-  struct pump_object *po = state;
-  char buffer[65536] = {0};
-  size_t n;
-
-  (void) data;
-  switch (type)
-    {
-    case REACTOR_STREAM_EVENT_WRITE:
-      po->blocked = 0;
-      while (!po->blocked && po->write)
-        {
-          n = MIN(po->write, sizeof (buffer));
-          reactor_stream_write(&po->writer, buffer, n);
-          po->write -= n;
-          reactor_stream_flush(&po->writer);
-        }
-      if (!po->write)
-        reactor_stream_close(&po->writer);
-      break;
-    case REACTOR_STREAM_EVENT_BLOCKED:
-      po->blocked = 1;
-      break;
-    case REACTOR_STREAM_EVENT_CLOSE:
-      break;
-    }
-}
-
-void pump_reader(void *state, int type, void *data)
-{
-  struct pump_object *po = state;
-  reactor_stream_data *read = data;
+  struct error_state *s = state;
 
   (void) data;
   switch (type)
     {
     case REACTOR_STREAM_EVENT_READ:
-      po->read -= read->size;
-      reactor_stream_data_consume(read, read->size);
-      break;
-    case REACTOR_STREAM_EVENT_HANGUP:
-      assert_true(po->read == 0);
-      reactor_stream_close(&po->reader);
-      break;
-    case REACTOR_STREAM_EVENT_CLOSE:
-      break;
+      mock_read_failure = EIO;
+      assert_int_equal(write(s->fd[1], "", 1), 1);
+      return REACTOR_OK;
+    default:
+      reactor_stream_close(&s->stream);
+      return REACTOR_ABORT;
     }
 }
 
-void pump()
+int error_event2(void *state, int type, void *data)
 {
-  struct pump_object po;
-  int e, fds[2];
-
-  reactor_core_construct();
-
-  e = pipe(fds);
-  assert_int_equal(e, 0);
-  po.write = 104857600;
-  po.read = 104857600;
-  po.blocked = 1;
-  reactor_stream_open(&po.reader, pump_reader, &po, fds[0]);
-  reactor_stream_open(&po.writer, pump_writer, &po, fds[1]);
-  reactor_stream_write_notify(&po.writer);
-  e = reactor_core_run();
-  assert_int_equal(e, 0);
-
-  reactor_core_destruct();
-}
-
-void file_reader(void *state, int type, void *data)
-{
-  reactor_stream *stream = state;
+  struct error_state *s = state;
 
   (void) data;
   switch (type)
     {
-    case REACTOR_STREAM_EVENT_ERROR:
-    case REACTOR_STREAM_EVENT_HANGUP:
-      reactor_stream_close(stream);
-      break;
+    case REACTOR_STREAM_EVENT_READ:
+      close(s->fd[1]);
+      return REACTOR_OK;
+    default:
+      reactor_stream_close(&s->stream);
+      return REACTOR_ABORT;
     }
 }
 
-void file()
+void error()
 {
-  int fd, e;
-  reactor_stream reader;
+  int fd;
+  char buffer[REACTOR_STREAM_BLOCK_SIZE] = {0};
+  struct error_state s;
+  ssize_t n;
 
-  reactor_core_construct();
-
-  /* file eof */
-  fd = open("Makefile", O_RDONLY);
+  // open file
+  fd = open("/dev/null", O_RDONLY);
   assert_true(fd != -1);
-  reactor_stream_open(&reader, file_reader, &reader, fd);
-  e = reactor_core_run();
-  assert_int_equal(e, 0);
-
-  /* read error */
-  fd = open("Makefile", O_RDONLY);
-  assert_true(fd != -1);
-  reactor_stream_open(&reader, file_reader, &reader, fd);
-  mock_read_failure = EIO;
-  e = reactor_core_run();
-  assert_int_equal(e, 0);
-
-  /* read would block */
-  fd = open("Makefile", O_RDONLY);
-  assert_true(fd != -1);
-  mock_read_failure = EAGAIN;
-  reactor_stream_open(&reader, file_reader, &reader, fd);
-  e = reactor_core_run();
-  assert_int_equal(e, 0);
-
-  /* close on already closed stream */
-  reactor_stream_close(&reader);
-
+  assert_int_equal(reactor_core_construct(), REACTOR_OK);
+  assert_int_equal(reactor_stream_open(&s.stream, error_event1, &s, fd), REACTOR_ERROR);
   reactor_core_destruct();
+  close(fd);
+
+  // read error when not buffered
+  socket_pipe(s.fd);
+  assert_int_equal(reactor_core_construct(), REACTOR_OK);
+  assert_int_equal(reactor_stream_open(&s.stream, error_event1, &s, s.fd[0]), REACTOR_OK);
+  assert_int_equal(write(s.fd[1], "", 1), 1);
+  mock_read_failure = EIO;
+  assert_int_equal(reactor_core_run(), REACTOR_OK);
+  reactor_core_destruct();
+  close(s.fd[1]);
+  mock_read_failure = 0;
+
+  // read error when buffered
+  socket_pipe(s.fd);
+  assert_int_equal(reactor_core_construct(), REACTOR_OK);
+  assert_int_equal(reactor_stream_open(&s.stream, error_event1, &s, s.fd[0]), REACTOR_OK);
+  assert_int_equal(write(s.fd[1], "", 1), 1);
+  assert_int_equal(reactor_core_run(), REACTOR_OK);
+  reactor_core_destruct();
+  close(s.fd[1]);
+  mock_read_failure = 0;
+
+  // write error
+  socket_socketpair(s.fd);
+  assert_int_equal(reactor_core_construct(), REACTOR_OK);
+  assert_int_equal(reactor_stream_open(&s.stream, error_event1, &s, s.fd[0]), REACTOR_OK);
+  while (!reactor_stream_blocked(&s.stream))
+    {
+      reactor_stream_write(&s.stream, buffer, sizeof buffer);
+      assert_int_equal(reactor_stream_flush(&s.stream), REACTOR_OK);
+    }
+  while (1)
+    {
+      n = read(s.fd[1], buffer, sizeof buffer);
+      if (n <= 0)
+        break;
+    }
+  assert_true(reactor_stream_blocked(&s.stream));
+  mock_write_failure = EIO;
+  assert_int_equal(reactor_core_run(), REACTOR_OK);
+  reactor_stream_close(&s.stream);
+  reactor_core_destruct();
+  close(s.fd[1]);
+  mock_write_failure = 0;
+
+  // write error when blocked
+  socket_pipe(s.fd);
+  assert_int_equal(reactor_core_construct(), REACTOR_OK);
+  assert_int_equal(reactor_stream_open(&s.stream, error_event1, &s, s.fd[0]), REACTOR_OK);
+  reactor_stream_write_string(&s.stream, "test");
+  mock_write_failure = EIO;
+  assert_int_equal(reactor_stream_flush(&s.stream), REACTOR_ERROR);
+  reactor_stream_close(&s.stream);
+  reactor_core_destruct();
+  close(s.fd[1]);
+  mock_write_failure = 0;
+
+  // read close
+  socket_pipe(s.fd);
+  assert_int_equal(reactor_core_construct(), REACTOR_OK);
+  assert_int_equal(reactor_stream_open(&s.stream, error_event2, &s, s.fd[0]), REACTOR_OK);
+  assert_int_equal(write(s.fd[1], "", 1), 1);
+  assert_int_equal(reactor_core_run(), REACTOR_OK);
+  reactor_core_destruct();
+  close(s.fd[1]);
+
+  // invalid event
+  socket_pipe(s.fd);
+  assert_int_equal(reactor_core_construct(), REACTOR_OK);
+  assert_int_equal(reactor_stream_open(&s.stream, error_event2, &s, s.fd[0]), REACTOR_OK);
+  assert_int_equal(reactor_stream_event(&s.stream, 0, (int[]){0}), REACTOR_ABORT);
+  reactor_core_destruct();
+  close(s.fd[1]);
 }
 
-void sock()
+int exception_event1(void *state, int type, void *data)
 {
-  int fd, e;
-  reactor_stream reader;
+  reactor_stream *s = state;
 
-  reactor_core_construct();
+  (void) data;
+  switch (type)
+    {
+    case REACTOR_STREAM_EVENT_READ:
+      return REACTOR_OK;
+    default:
+      reactor_stream_close(s);
+      return REACTOR_ABORT;
+    }
+}
 
-  fd = socket(AF_INET, SOCK_STREAM, PF_UNSPEC);
-  assert_true(fd != -1);
-  reactor_stream_open(&reader, file_reader, &reader, fd);
-  e = reactor_core_run();
-  assert_int_equal(e, 0);
+
+int exception_event2(void *state, int type, void *data)
+{
+  reactor_stream *s = state;
+
+  (void) type;
+  (void) data;
+  reactor_stream_close(s);
+  return REACTOR_ABORT;
+}
+
+void exception()
+{
+  reactor_stream s;
+  int fd[2];
+  char buffer[REACTOR_STREAM_BLOCK_SIZE] = {0};
+  ssize_t n;
+
+  assert_int_equal(reactor_core_construct(), REACTOR_OK);
+
+  // read and close
+  socket_socketpair(fd);
+  write(fd[1], "test", 4);
+  close(fd[1]);
+  assert_int_equal(reactor_stream_open(&s, exception_event1, &s, fd[0]), REACTOR_OK);
+  assert_int_equal(reactor_core_run(), REACTOR_OK);
+
+  // read and read that returns 0
+  socket_socketpair(fd);
+  assert_int_equal(setsockopt(fd[1], SOL_SOCKET, SO_SNDBUF, (int[]){sizeof buffer}, sizeof(int)), 0);
+  write(fd[1], buffer, sizeof buffer);
+  close(fd[1]);
+  assert_int_equal(reactor_stream_open(&s, exception_event1, &s, fd[0]), REACTOR_OK);
+  assert_int_equal(reactor_core_run(), REACTOR_OK);
+
+  // abort on read when output is waiting
+  socket_socketpair(fd);
+  assert_int_equal(reactor_stream_open(&s, exception_event2, &s, fd[0]), REACTOR_OK);
+  while (!reactor_stream_blocked(&s))
+    {
+      reactor_stream_write(&s, buffer, sizeof buffer);
+      assert_int_equal(reactor_stream_flush(&s), REACTOR_OK);
+    }
+  while (1)
+    {
+      n = read(fd[1], buffer, sizeof buffer);
+      if (n <= 0)
+        break;
+    }
+  write(fd[1], "", 1);
+  assert_int_equal(reactor_core_run(), REACTOR_OK);
+  close(fd[1]);
 
   reactor_core_destruct();
 }
@@ -270,9 +343,8 @@ int main()
 
   const struct CMUnitTest tests[] = {
     cmocka_unit_test(core),
-    cmocka_unit_test(pump),
-    cmocka_unit_test(file),
-    cmocka_unit_test(sock)
+    cmocka_unit_test(error),
+    cmocka_unit_test(exception)
   };
 
   e = cmocka_run_group_tests(tests, NULL, NULL);

@@ -16,11 +16,12 @@
 
 #include "reactor.h"
 
-static void callback(void *state, int type, void *data)
+static int callback(void *state, int type, void *data)
 {
   assert_true(state != NULL);
   assert_int_equal(type, 42);
   assert_string_equal(data, "test");
+  return REACTOR_OK;
 }
 
 void core()
