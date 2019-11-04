@@ -16,18 +16,15 @@
 
 #include "reactor.h"
 
-extern int reactor_resolver_event(void *, int, void *);
-
-static int event(void *state, int type, void *data)
+static int event(reactor_event *event)
 {
-  reactor_resolver *r = state;
+  int *n = event->state;
 
-  switch (type)
+  assert_int_equal(*n, 42);
+  switch (event->type)
     {
-    case REACTOR_RESOLVER_EVENT_DONE:
-      assert_int_equal(type, REACTOR_RESOLVER_EVENT_DONE);
-      assert_true(data != NULL);
-      reactor_resolver_close(r);
+    case REACTOR_RESOLVER_EVENT_RESPONSE:
+      assert_true(event->data != 0);
       return REACTOR_ABORT;
     default:
       return REACTOR_OK;
@@ -36,23 +33,61 @@ static int event(void *state, int type, void *data)
 
 static void core()
 {
-  reactor_resolver r;
+  int n = 42;
 
-  assert_int_equal(reactor_core_construct(), REACTOR_OK);
-  assert_int_equal(reactor_resolver_open(&r, event, &r, "localhost", "http", 0, 0, 0), REACTOR_OK);
-  assert_int_equal(reactor_resolver_event(&r, -1, NULL), REACTOR_OK);
-  assert_int_equal(reactor_core_run(), REACTOR_OK);
-  reactor_core_destruct();
+  reactor_construct();
+  assert_true(reactor_resolver_request(event, &n, "localhost", "http", 0, 0, 0));
+  reactor_destruct();
 
+  reactor_construct();
+  assert_true(reactor_resolver_request(event, &n, "localhost", "http", 0, 0, 0));
+  reactor_run();
+  reactor_destruct();
+
+  assert_int_equal(reactor_resolver_request(event, &n, "localhost", "http", 0, 0, 0), 0);
+}
+
+static void concurrency()
+{
+  int i, n = 42;
+
+  reactor_construct();
+  for (i = 0; i < 32; i ++)
+    assert_true(reactor_resolver_request(event, &n, "127.0.0.1", "http", 0, 0, 0));
+  reactor_run();
+  reactor_destruct();
+}
+
+static void aborts()
+{
+  int i, n = 42;
+  reactor_id id[32];
+
+  reactor_construct();
+  for (i = 0; i < 32; i ++)
+  {
+    id[i] = reactor_resolver_request(event, &n, "localhost", "http", 0, 0, 0);
+    assert_true(id[i] != 0);
+  }
+  for (i = 0; i < 32; i ++)
+    reactor_resolver_cancel(id[i]);
+  n = 0;
+  reactor_run();
+
+  reactor_resolver_cancel(0);
+  reactor_destruct();
 }
 
 int main()
 {
   int e;
 
-  const struct CMUnitTest tests[] = {
-    cmocka_unit_test(core),
-  };
+  const struct CMUnitTest tests[] =
+    {
+     cmocka_unit_test(core),
+     cmocka_unit_test(concurrency),
+     cmocka_unit_test(aborts)
+    };
 
   e = cmocka_run_group_tests(tests, NULL, NULL);
   (void) close(0);

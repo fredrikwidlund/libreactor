@@ -1,197 +1,180 @@
-#define _GNU_SOURCE
-
 #include <stdio.h>
-#include <stdlib.h>
 #include <stdint.h>
-#include <fcntl.h>
+#include <stdlib.h>
 #include <unistd.h>
-#include <poll.h>
-#include <sched.h>
-#include <signal.h>
+#include <fcntl.h>
+#include <pthread.h>
+#include <errno.h>
 #include <sys/socket.h>
-#include <sys/wait.h>
+#include <sys/epoll.h>
 
 #include <dynamic.h>
 
-#include "reactor_user.h"
-#include "reactor_descriptor.h"
-#include "reactor_core.h"
-#include "reactor_pool.h"
+#include "../reactor.h"
 
-static int reactor_pool_worker_thread(void *arg)
+typedef struct reactor_pool_job     reactor_pool_job;
+typedef struct reactor_pool_worker  reactor_pool_worker;
+typedef struct reactor_pool         reactor_pool;
+
+struct reactor_pool_job
 {
-  reactor_pool *pool = arg;
+  reactor_user         user;
+};
+
+struct reactor_pool_worker
+{
+  pthread_t           thread;
+  int                 in;
+  int                 out;
+};
+
+struct reactor_pool
+{
+  int                 ref;
+  reactor_user        user;
+  int                 out[2];
+  int                 in[2];
+  int                 worker_count;
+  list                workers;
+  int                 job_count;
+  list                jobs;
+};
+
+static __thread reactor_pool pool = {0};
+
+static void *reactor_pool_worker_thread(void *arg)
+{
+  reactor_pool_worker *worker = arg;
   reactor_pool_job *job;
   ssize_t n;
 
   while (1)
     {
-      n = read(pool->queue[1], &job, sizeof job);
-      if (n != sizeof job)
-        return 1;
-      reactor_user_dispatch(&job->user, REACTOR_POOL_EVENT_CALL, NULL);
-      n = write(pool->queue[1], &job, sizeof job);
-      if (n != sizeof job)
-        return 1;
+      n = read(worker->in, &job, sizeof job);
+      reactor_assert_int_equal(n, sizeof job);
+
+      (void) reactor_user_dispatch(&job->user, REACTOR_POOL_EVENT_CALL, 0);
+
+      n = write(worker->out, &job, sizeof job);
+      reactor_assert_int_equal(n, sizeof job);
     }
 
-  return 0;
+  return NULL;
 }
 
-static void reactor_pool_grow(reactor_pool *pool)
+static void reactor_pool_release_worker(void *item)
+{
+  reactor_pool_worker *worker = item;
+
+  pool.worker_count --;
+  pthread_cancel(worker->thread);
+  pthread_join(worker->thread, NULL);
+}
+
+static void reactor_pool_grow(void)
 {
   reactor_pool_worker *worker;
+  int e;
 
-  if (pool->workers_count >= pool->workers_max)
+  if (pool.worker_count >= REACTOR_POOL_WORKER_COUNT_MAX)
     return;
 
-  worker = malloc(sizeof *worker);
-  worker->stack = malloc(REACTOR_POOL_STACK_SIZE);
-  worker->pid = clone(reactor_pool_worker_thread, (char *) worker->stack + REACTOR_POOL_STACK_SIZE,
-                      CLONE_VM | CLONE_FS | CLONE_SIGHAND | CLONE_PARENT,
-                      pool);
-  list_push_back(&pool->workers, &worker, sizeof worker);
-  pool->workers_count ++;
+  worker = list_push_back(&pool.workers, NULL, sizeof (reactor_pool_worker));
+  worker->in = pool.out[0];
+  worker->out = pool.in[1];
+  e = pthread_create(&worker->thread, NULL, reactor_pool_worker_thread, worker);
+  reactor_assert_int_equal(e, 0);
+  pool.worker_count ++;
 }
 
-static void reactor_pool_dequeue(reactor_pool *pool)
+static reactor_status reactor_pool_receive(reactor_event *event)
 {
   reactor_pool_job *job;
   ssize_t n;
 
-  n = read(pool->queue[0], &job, sizeof job);
-  if (n != sizeof job)
+  reactor_assert_int_equal(event->data, EPOLLIN);
+  while (1)
     {
-      reactor_descriptor_clear(&pool->descriptor);
-      return;
+      n = read(pool.in[0], &job, sizeof job);
+      if (n == -1)
+        {
+          reactor_assert_int_equal(errno, EAGAIN);
+          return REACTOR_OK;
+        }
+      reactor_assert_int_equal(n, sizeof job);
+
+      (void) reactor_user_dispatch(&job->user, REACTOR_POOL_EVENT_RETURN, 0);
+
+      list_erase(job, NULL);
+      pool.job_count --;
+      if (!pool.job_count)
+        reactor_core_delete(&pool.user, pool.in[0]);
     }
-
-  (void) reactor_user_dispatch(&job->user, REACTOR_POOL_EVENT_RETURN, NULL);
-  free(job);
-  pool->jobs_count --;
-  if (!pool->jobs_count)
-    reactor_descriptor_clear(&pool->descriptor);
-}
-
-static void reactor_pool_flush(reactor_pool *pool)
-{
-  reactor_pool_job **i;
-  ssize_t n;
-
-  while (!list_empty(&pool->jobs))
-    {
-      i = list_front(&pool->jobs);
-      n = write(pool->queue[0], i, sizeof *i);
-      if (n != sizeof *i)
-        break;
-      list_erase(i, NULL);
-    }
-}
-
-#ifndef GCOV_BUILD
-static
-#endif /* GCOV_BUILD */
-int reactor_pool_event(void *state, int type, void *data)
-{
-  reactor_pool *pool = state;
-  int flags = *(int *) data;
-
-  (void) type;
-  if (flags & POLLIN)
-    reactor_pool_dequeue(pool);
-  if (flags & POLLOUT)
-    reactor_pool_flush(pool);
 
   return REACTOR_OK;
 }
 
-int reactor_pool_construct(reactor_pool *pool)
+void reactor_pool_construct(void)
 {
   int e;
 
-  *pool = (reactor_pool) {0};
-  list_construct(&pool->jobs);
-  list_construct(&pool->workers);
-  pool->workers_max = REACTOR_POOL_WORKERS_MAX;
+  if (!pool.ref)
+    {
+      reactor_user_construct(&pool.user, reactor_pool_receive, NULL);
 
-  e = socketpair(PF_UNIX, SOCK_DGRAM, 0, pool->queue);
-  if (e == -1)
-    return REACTOR_ERROR;
-  return REACTOR_OK;
+      e = pipe(pool.out);
+      reactor_assert_int_not_equal(e, -1);
+
+      e = pipe(pool.in);
+      reactor_assert_int_not_equal(e, -1);
+
+      e = fcntl(pool.in[0], F_SETFL, O_NONBLOCK);
+      reactor_assert_int_not_equal(e, -1);
+
+      pool.worker_count = 0;
+      list_construct(&pool.workers);
+
+      pool.job_count = 0;
+      list_construct(&pool.jobs);
+    }
+
+  pool.ref ++;
 }
 
-void reactor_pool_destruct(reactor_pool *pool)
+void reactor_pool_destruct(void)
 {
-  reactor_pool_worker **w, *worker;
-  reactor_pool_job **j, *job;
+  if (!pool.ref)
+    return;
 
-  while (!list_empty(&pool->workers))
+  pool.ref --;
+  if (!pool.ref)
     {
-      w = list_front(&pool->workers);
-      worker = *w;
-      list_erase(w, NULL);
-      pool->workers_count --;
-      kill(worker->pid, SIGTERM);
-      waitpid(worker->pid, NULL, 0);
-      free(worker->stack);
-      free(worker);
-    }
+      list_destruct(&pool.workers, reactor_pool_release_worker);
+      list_destruct(&pool.jobs, NULL);
 
-  while (!list_empty(&pool->jobs))
-    {
-      j = list_front(&pool->jobs);
-      job = *j;
-      list_erase(j, NULL);
-      pool->jobs_count --;
-      free(job);
-    }
-
-  if (pool->queue[0] >= 0)
-    {
-      reactor_descriptor_clear(&pool->descriptor);
-      (void) close(pool->queue[0]);
-      pool->queue[0] = -1;
-    }
-
-  if (pool->queue[1] >= 0)
-    {
-      (void) close(pool->queue[1]);
-      pool->queue[1] = -1;
+      close(pool.out[0]);
+      close(pool.out[1]);
+      close(pool.in[0]);
+      close(pool.in[1]);
     }
 }
 
-void reactor_pool_limits(reactor_pool *pool, size_t min, size_t max)
-{
-  pool->workers_min = min;
-  pool->workers_max = max;
-  while (pool->workers_count < pool->workers_min)
-    reactor_pool_grow(pool);
-}
-
-void reactor_pool_enqueue(reactor_pool *pool, reactor_user_callback *callback, void *state)
+void reactor_pool_dispatch(reactor_user_callback *callback, void *state)
 {
   reactor_pool_job *job;
   ssize_t n;
 
-  job = malloc(sizeof *job);
-  if (!job)
-    abort();
+  if (pool.job_count >= pool.worker_count)
+    reactor_pool_grow();
+
+  job = list_push_back(&pool.jobs, NULL, sizeof *job);
   reactor_user_construct(&job->user, callback, state);
-  if (pool->jobs_count >= pool->workers_count)
-    reactor_pool_grow(pool);
-  if (!pool->jobs_count)
-    reactor_descriptor_open(&pool->descriptor, reactor_pool_event, pool, pool->queue[0], POLLIN);
 
-  pool->jobs_count ++;
+  n = write(pool.out[1], &job, sizeof job);
+  reactor_assert_int_equal(n, sizeof job);
 
-  if (list_empty(&pool->jobs))
-    {
-      n = write(pool->queue[0], &job, sizeof job);
-      if (n == sizeof job)
-        return;
-      reactor_descriptor_set(&pool->descriptor, POLLIN | POLLOUT);
-    }
+  if (!pool.job_count)
+    reactor_core_add(&pool.user, pool.in[0], EPOLLIN);
 
-  list_push_back(&pool->jobs, &job, sizeof job);
+  pool.job_count ++;
 }
-

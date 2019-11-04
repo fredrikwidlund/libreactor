@@ -1,66 +1,47 @@
-ACLOCAL_AMFLAGS = ${ACLOCAL_FLAGS} -I m4
-AM_CFLAGS = -std=gnu11 -O3 -g -flto -fuse-linker-plugin -I$(srcdir)/src
-AM_LDFLAGS = -static
+AUTOMAKE_OPTIONS = subdir-objects
 
-EXTRA_DIST = \
-src/picohttpparser/picohttpparser.h \
-test/valgrind.sh \
-test/coverage.sh \
-test/data/http/request-1-allow \
-test/data/http/request-1-deny \
-test/data/http/request-2-allow \
-test/data/http/request-2-deny \
-test/data/http/request-3-allow \
-test/data/http/request-3-deny \
-test/data/http/request-4-allow \
-test/data/http/request-4-deny \
-test/data/http/request-5-allow \
-test/data/http/request-5-deny \
-test/data/http/request-6-deny \
-test/data/http/request-7-deny \
-test/data/http/request-8-deny \
-test/data/http/request-9-deny \
-test/data/http/response-1-allow \
-test/data/http/response-1-deny \
-test/data/http/response-2-allow \
-test/data/http/response-2-deny \
-test/data/http/response-3-allow \
-test/data/http/response-3-deny \
-test/data/http/response-4-allow \
-test/data/http/response-4-deny \
-test/data/http/response-5-deny \
-CHANGES \
-LICENSE \
-README.rst
+ACLOCAL_AMFLAGS =  -I m4
+AM_CFLAGS = -std=gnu11 -flto -fuse-linker-plugin -I$(srcdir)/src
 
 SOURCE_FILES = \
 src/picohttpparser/picohttpparser.c \
-src/reactor/reactor_util.c \
+src/reactor/reactor.c \
+src/reactor/reactor_assert.c \
+src/reactor/reactor_vector.c \
+src/reactor/reactor_utility.c \
 src/reactor/reactor_user.c \
 src/reactor/reactor_core.c \
-src/reactor/reactor_descriptor.c \
-src/reactor/reactor_pool.c \
+src/reactor/reactor_fd.c \
 src/reactor/reactor_timer.c \
-src/reactor/reactor_stream.c \
+src/reactor/reactor_pool.c \
 src/reactor/reactor_resolver.c \
-src/reactor/reactor_tcp.c \
-src/reactor/reactor_http.c
+src/reactor/reactor_net.c \
+src/reactor/reactor_stream.c \
+src/reactor/reactor_http.c \
+src/reactor/reactor_couch.c \
+src/reactor/reactor_server.c
 
 HEADER_FILES = \
-src/reactor/reactor_util.h \
+src/picohttpparser/picohttpparser.h \
+src/reactor/reactor.h \
+src/reactor/reactor_assert.h \
+src/reactor/reactor_vector.h \
+src/reactor/reactor_utility.h \
 src/reactor/reactor_user.h \
 src/reactor/reactor_core.h \
-src/reactor/reactor_descriptor.h \
-src/reactor/reactor_pool.h \
+src/reactor/reactor_fd.h \
 src/reactor/reactor_timer.h \
-src/reactor/reactor_stream.h \
+src/reactor/reactor_pool.h \
 src/reactor/reactor_resolver.h \
-src/reactor/reactor_tcp.h \
-src/reactor/reactor_http.h
+src/reactor/reactor_net.h \
+src/reactor/reactor_stream.h \
+src/reactor/reactor_http.h \
+src/reactor/reactor_couch.h \
+src/reactor/reactor_server.h
 
-AUTOMAKE_OPTIONS = subdir-objects
 lib_LTLIBRARIES = libreactor.la
 libreactor_la_SOURCES = $(SOURCE_FILES) $(HEADER_FILES)
+libreactor_la_LDFLAGS = -static -ldynamic
 
 headerfilesdir = $(includedir)/reactor
 headerfiles_HEADERS = $(HEADER_FILES)
@@ -71,27 +52,60 @@ mainheader_HEADERS = src/reactor.h
 pkgconfigdir = $(libdir)/pkgconfig
 pkgconfig_DATA = libreactor.pc
 
+bin_PROGRAMS = \
+example/example \
+example/producer \
+example/resolver \
+example/tcp \
+example/tcpd \
+example/http \
+example/couch \
+example/httpd \
+example/server \
+example/simple
+
+example_example_LDFLAGS = -pthread
+example_example_LDADD = libreactor.la -ldynamic
+
+example_producer_LDFLAGS = -pthread
+example_producer_LDADD = libreactor.la -ldynamic
+
+example_resolver_LDFLAGS = -pthread
+example_resolver_LDADD = libreactor.la -ldynamic
+
+example_tcp_LDFLAGS = -pthread
+example_tcp_LDADD = libreactor.la -ldynamic
+
+example_tcpd_LDFLAGS = -pthread
+example_tcpd_LDADD = libreactor.la -ldynamic
+
+example_http_LDFLAGS = -pthread
+example_http_LDADD = libreactor.la -ldynamic
+
+example_httpd_LDFLAGS = -pthread
+example_httpd_LDADD = libreactor.la -ldynamic
+
+example_couch_LDFLAGS = -pthread
+example_couch_LDADD = libreactor.la -ldynamic -ljansson
+
+example_server_LDFLAGS = -pthread
+example_server_LDADD = libreactor.la -ldynamic -ljansson
+
+example_simple_LDFLAGS = -pthread
+example_simple_LDADD = libreactor.la -ldynamic -ljansson
+
+MAINTAINERCLEANFILES = aclocal.m4 config.h.in configure Makefile.in libreactor-?.?.?.tar.gz
+
+maintainer-clean-local:
+	rm -rf autotools m4 libreactor-?.?.?
+
+CLEANFILES = {.,test/,src/reactor/,src/picohttpparser}/*.{gcno,gcda,gcov}
+
 ### unit tests ###
 
 CHECK_CFLAGS = -std=gnu11 -O0 -g -ftest-coverage -fprofile-arcs -I$(srcdir)/src -DGCOV_BUILD
-CHECK_LDADD = -L. -lreactor_test -lcmocka -ldynamic
-CHECK_LDFLAGS_EXTRA = \
--Wl,--wrap=epoll_wait \
--Wl,--wrap=epoll_pwait \
--Wl,--wrap=epoll_create1 \
--Wl,--wrap=epoll_ctl \
--Wl,--wrap=socketpair \
--Wl,--wrap=malloc \
--Wl,--wrap=abort \
--Wl,--wrap=read \
--Wl,--wrap=write \
--Wl,--wrap=accept \
--Wl,--wrap=bind \
--Wl,--wrap=listen \
--Wl,--wrap=connect \
--Wl,--wrap=socket \
--Wl,--wrap=timerfd_create \
--Wl,--wrap=timerfd_settime
+CHECK_LDADD = -L. libreactor_test.a -lcmocka -ldynamic
+CHECK_LDFLAGS_EXTRA = -pthread -Wl,--wrap=abort
 
 check_LIBRARIES = libreactor_test.a
 libreactor_test_a_CFLAGS = $(CHECK_CFLAGS)
@@ -99,17 +113,17 @@ libreactor_test_a_SOURCES = $(SOURCE_FILES) $(HEADER_FILES)
 
 check_PROGRAMS =
 
-check_PROGRAMS += test/reactor_util
-test_reactor_util_CFLAGS = $(CHECK_CFLAGS)
-test_reactor_util_LDADD = $(CHECK_LDADD)
-test_reactor_util_LDFLAGS = $(CHECK_LDFLAGS_EXTRA)
-test_reactor_util_SOURCES = test/reactor_util.c test/mock.c
+check_PROGRAMS += test/reactor
+test_reactor_CFLAGS = $(CHECK_CFLAGS)
+test_reactor_LDADD = $(CHECK_LDADD)
+test_reactor_LDFLAGS = $(CHECK_LDFLAGS_EXTRA)
+test_reactor_SOURCES = test/reactor.c test/mock.c
 
-check_PROGRAMS += test/reactor_user
-test_reactor_user_CFLAGS = $(CHECK_CFLAGS)
-test_reactor_user_LDADD = $(CHECK_LDADD)
-test_reactor_user_LDFLAGS = $(CHECK_LDFLAGS_EXTRA)
-test_reactor_user_SOURCES = test/reactor_user.c test/mock.c
+check_PROGRAMS += test/reactor_assert
+test_reactor_assert_CFLAGS = $(CHECK_CFLAGS)
+test_reactor_assert_LDADD = $(CHECK_LDADD)
+test_reactor_assert_LDFLAGS = $(CHECK_LDFLAGS_EXTRA)
+test_reactor_assert_SOURCES = test/reactor_assert.c test/mock.c
 
 check_PROGRAMS += test/reactor_core
 test_reactor_core_CFLAGS = $(CHECK_CFLAGS)
@@ -117,23 +131,11 @@ test_reactor_core_LDADD = $(CHECK_LDADD)
 test_reactor_core_LDFLAGS = $(CHECK_LDFLAGS_EXTRA)
 test_reactor_core_SOURCES = test/reactor_core.c test/mock.c
 
-check_PROGRAMS += test/reactor_descriptor
-test_reactor_descriptor_CFLAGS = $(CHECK_CFLAGS)
-test_reactor_descriptor_LDADD = $(CHECK_LDADD)
-test_reactor_descriptor_LDFLAGS = $(CHECK_LDFLAGS_EXTRA)
-test_reactor_descriptor_SOURCES = test/reactor_descriptor.c test/mock.c
-
 check_PROGRAMS += test/reactor_pool
 test_reactor_pool_CFLAGS = $(CHECK_CFLAGS)
 test_reactor_pool_LDADD = $(CHECK_LDADD)
 test_reactor_pool_LDFLAGS = $(CHECK_LDFLAGS_EXTRA)
 test_reactor_pool_SOURCES = test/reactor_pool.c test/mock.c
-
-check_PROGRAMS += test/reactor_timer
-test_reactor_timer_CFLAGS = $(CHECK_CFLAGS)
-test_reactor_timer_LDADD = $(CHECK_LDADD)
-test_reactor_timer_LDFLAGS = $(CHECK_LDFLAGS_EXTRA)
-test_reactor_timer_SOURCES = test/reactor_timer.c test/mock.c
 
 check_PROGRAMS += test/reactor_resolver
 test_reactor_resolver_CFLAGS = $(CHECK_CFLAGS)
@@ -141,44 +143,6 @@ test_reactor_resolver_LDADD = $(CHECK_LDADD)
 test_reactor_resolver_LDFLAGS = $(CHECK_LDFLAGS_EXTRA)
 test_reactor_resolver_SOURCES = test/reactor_resolver.c test/mock.c
 
-check_PROGRAMS += test/reactor_stream
-test_reactor_stream_CFLAGS = $(CHECK_CFLAGS)
-test_reactor_stream_LDADD = $(CHECK_LDADD)
-test_reactor_stream_LDFLAGS = $(CHECK_LDFLAGS_EXTRA)
-test_reactor_stream_SOURCES = test/reactor_stream.c test/mock.c
-
-check_PROGRAMS += test/reactor_tcp
-test_reactor_tcp_CFLAGS = $(CHECK_CFLAGS)
-test_reactor_tcp_LDADD = $(CHECK_LDADD)
-test_reactor_tcp_LDFLAGS = $(CHECK_LDFLAGS_EXTRA)
-test_reactor_tcp_SOURCES = test/reactor_tcp.c test/mock.c
-
-check_PROGRAMS += test/reactor_http
-test_reactor_http_CFLAGS = $(CHECK_CFLAGS) -DSRCDIR=\"$(srcdir)/\"
-test_reactor_http_LDADD = $(CHECK_LDADD)
-test_reactor_http_LDFLAGS = $(CHECK_LDFLAGS_EXTRA)
-test_reactor_http_SOURCES = test/reactor_http.c test/mock.c
+dist_noinst_SCRIPTS = test/valgrind.sh test/coverage.sh
 
 TESTS = $(check_PROGRAMS) test/valgrind.sh test/coverage.sh
-
-## examples ###
-
-bin_PROGRAMS = \
-example/core \
-example/tcp \
-example/tcp_client \
-example/http_server \
-example/http_client \
-example/http_proxy
-
-example_core_LDFLAGS = -lreactor -ldynamic
-example_tcp_LDFLAGS = -lreactor -ldynamic
-example_tcp_client_LDFLAGS = -lreactor -ldynamic
-example_http_server_LDFLAGS = -lreactor -ldynamic
-example_http_client_LDFLAGS = -lreactor -ldynamic
-example_http_proxy_LDFLAGS = -lreactor -ldynamic
-
-MAINTAINERCLEANFILES = aclocal.m4 config.h.in configure Makefile.in libreactor-?.?.?.tar.gz
-maintainer-clean-local:; rm -rf autotools m4 libreactor-?.?.?
-
-CLEANFILES = {.,src/reactor,src/picohttpparser,test}/*.{gcno,gcda,gcov}

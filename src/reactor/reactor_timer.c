@@ -1,73 +1,80 @@
+#define _GNU_SOURCE
+
 #include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <fcntl.h>
 #include <unistd.h>
-#include <sys/epoll.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/timerfd.h>
-#include <sys/param.h>
-#include <netdb.h>
 #include <errno.h>
-#include <err.h>
+#include <sys/epoll.h>
+#include <sys/timerfd.h>
 
 #include <dynamic.h>
 
-#include "reactor_util.h"
-#include "reactor_user.h"
-#include "reactor_core.h"
-#include "reactor_descriptor.h"
-#include "reactor_timer.h"
+#include "../reactor.h"
 
-static int reactor_timer_error(reactor_timer *timer)
+static reactor_status reactor_timer_error(reactor_timer *timer, char *description)
 {
-  return reactor_user_dispatch(&timer->user, REACTOR_TIMER_EVENT_ERROR, NULL);
+  return reactor_user_dispatch(&timer->user, REACTOR_TIMER_EVENT_ERROR, (uintptr_t) description);
 }
 
-static int reactor_timer_event(void *state, int type, void *data)
+static reactor_status reactor_timer_handler(reactor_event *event)
 {
-  reactor_timer *timer = state;
+  reactor_timer *timer = event->state;
   uint64_t expirations;
   ssize_t n;
-
-  (void) type;
-  (void) data;
-  n = read(reactor_descriptor_fd(&timer->descriptor), &expirations, sizeof expirations);
-  if (n != sizeof expirations)
-    return reactor_timer_error(timer);
-  else
-    return reactor_user_dispatch(&timer->user, REACTOR_TIMER_EVENT_CALL, &expirations);
-}
-
-int reactor_timer_open(reactor_timer *timer, reactor_user_callback *callback, void *state, uint64_t t0, uint64_t ti)
-{
-  int e, fd;
-
-  reactor_user_construct(&timer->user, callback, state);
-  fd = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
-  if (fd == -1)
-    return REACTOR_ERROR;
-
-  e = reactor_descriptor_open(&timer->descriptor, reactor_timer_event, timer, fd, EPOLLIN | EPOLLET);
-  if (e == REACTOR_ABORT)
-    return REACTOR_ERROR;
-
-  return reactor_timer_set(timer, t0, ti);
-}
-
-int reactor_timer_set(reactor_timer *timer, uint64_t t0, uint64_t ti)
-{
   int e;
 
-  e = timerfd_settime(reactor_descriptor_fd(&timer->descriptor), 0, (struct itimerspec[]) {{
-        .it_interval = {.tv_sec = ti / 1000000000, .tv_nsec = ti % 1000000000},
-          .it_value = {.tv_sec = t0 / 1000000000, .tv_nsec = t0 % 1000000000}
-      }}, NULL);
-  return e == -1 ? REACTOR_ERROR : REACTOR_OK;
+  if (event->data != EPOLLIN)
+    return reactor_timer_error(timer, "invalid event data");
+
+  while (1)
+    {
+      n = read(reactor_fd_fileno(&timer->fd), &expirations, sizeof expirations);
+      if (n == -1 && errno == EAGAIN)
+        return REACTOR_OK;
+
+      if (n != sizeof expirations)
+        return reactor_timer_error(timer, "invalid read size");
+
+      e = reactor_user_dispatch(&timer->user, REACTOR_TIMER_EVENT_ALARM, expirations);
+      if (e)
+        return REACTOR_ABORT;
+    }
 }
 
-void reactor_timer_close(reactor_timer *timer)
+void reactor_timer_construct(reactor_timer *timer, reactor_user_callback *callback, void *state)
 {
-  reactor_descriptor_close(&timer->descriptor);
+  reactor_user_construct(&timer->user, callback, state);
+  reactor_fd_construct(&timer->fd, reactor_timer_handler, timer);
+}
+
+void reactor_timer_destruct(reactor_timer *timer)
+{
+  reactor_timer_clear(timer);
+}
+
+void reactor_timer_set(reactor_timer *timer, uint64_t t0, uint64_t ti)
+{
+  int e, fileno;
+
+  if (!reactor_fd_active(&timer->fd))
+    {
+      fileno = timerfd_create(CLOCK_MONOTONIC, TFD_NONBLOCK | TFD_CLOEXEC);
+      reactor_assert_int_not_equal(fileno, -1);
+      reactor_fd_open(&timer->fd, fileno, EPOLLIN | EPOLLET);
+    }
+
+  if (t0 == 0)
+    t0 = 1;
+
+  e = timerfd_settime(reactor_fd_fileno(&timer->fd), 0, (struct itimerspec[])
+                      {{
+                        .it_interval = {.tv_sec = ti / 1000000000, .tv_nsec = ti % 1000000000},
+                        .it_value = {.tv_sec = t0 / 1000000000, .tv_nsec = t0 % 1000000000}
+                      }}, NULL);
+  reactor_assert_int_not_equal(e, -1);
+}
+
+void reactor_timer_clear(reactor_timer *timer)
+{
+  if (reactor_fd_active(&timer->fd))
+    reactor_fd_close(&timer->fd);
 }

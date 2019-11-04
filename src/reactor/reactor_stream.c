@@ -1,230 +1,201 @@
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include <fcntl.h>
 #include <unistd.h>
-#include <sys/epoll.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-#include <sys/param.h>
-#include <netdb.h>
 #include <errno.h>
 #include <err.h>
+#include <sys/epoll.h>
+#include <sys/socket.h>
 
 #include <dynamic.h>
 
-#include "reactor_util.h"
-#include "reactor_user.h"
-#include "reactor_core.h"
-#include "reactor_descriptor.h"
-#include "reactor_stream.h"
+#include "../reactor.h"
 
-static int reactor_stream_error(reactor_stream *stream)
+static reactor_status reactor_stream_error(reactor_stream *stream, char *description)
 {
-  return reactor_user_dispatch(&stream->user, REACTOR_STREAM_EVENT_ERROR, NULL);
+  return reactor_user_dispatch(&stream->user, REACTOR_STREAM_EVENT_ERROR, (uintptr_t) description);
 }
 
-static int reactor_stream_hangup(reactor_stream *stream)
+static void reactor_stream_write_set(reactor_stream *stream)
 {
-  return reactor_user_dispatch(&stream->user, REACTOR_STREAM_EVENT_CLOSE, NULL);
+  if (~stream->flags & REACTOR_STREAM_FLAG_WRITE)
+    {
+      stream->flags |= REACTOR_STREAM_FLAG_WRITE;
+      reactor_fd_events(&stream->fd, EPOLLIN | EPOLLOUT | EPOLLET);
+    }
 }
 
-static void reactor_stream_input_save(reactor_stream *stream, void *data, size_t size)
+static void reactor_stream_write_clear(reactor_stream *stream)
 {
-  if (size)
-    buffer_insert(&stream->read, buffer_size(&stream->read), data, size);
+  if (stream->flags & REACTOR_STREAM_FLAG_WRITE)
+    {
+      stream->flags &= ~REACTOR_STREAM_FLAG_WRITE;
+      reactor_fd_events(&stream->fd, EPOLLIN | EPOLLET);
+    }
 }
 
-static int reactor_stream_input_exception(reactor_stream *stream, ssize_t n)
+static reactor_status reactor_stream_input(reactor_stream *stream)
 {
-  if (n > 0)
-    return REACTOR_OK;
-  else if (n == 0)
-    return reactor_stream_hangup(stream);
-  else if (errno == EAGAIN)
-    return REACTOR_OK;
-  else
-    return reactor_stream_error(stream);
-}
-
-static int reactor_stream_input_buffered(reactor_stream *stream)
-{
-  char block[REACTOR_STREAM_BLOCK_SIZE];
-  ssize_t n, n_total;
-  struct iovec iov;
+  buffer *b;
+  ssize_t n, n_read;
   int e;
 
-  n_total = 0;
+  b = &stream->input;
+  n_read = 0;
   while (1)
     {
-      n = read(reactor_descriptor_fd(&stream->descriptor), block, sizeof block);
-      if (n <= 0)
-        break;
-      buffer_insert(&stream->read, buffer_size(&stream->read), block, n);
-      n_total += n;
+      buffer_reserve(b, buffer_size(b) + REACTOR_STREAM_BLOCK_SIZE);
+      n = read(reactor_fd_fileno(&stream->fd), (char *) buffer_data(b) + buffer_size(b), buffer_capacity(b) - buffer_size(b));
+      if (n > 0)
+        {
+          n_read += n;
+          b->size += n;
+          if (buffer_size(b) < buffer_capacity(b))
+            break;
+        }
+      else
+        {
+          if (n == -1 && errno != EAGAIN)
+            return reactor_stream_error(stream, "read error");
+          break;
+        }
     }
 
-  if (n_total > 0)
+  if (n_read)
     {
-      iov.iov_base = buffer_data(&stream->read);
-      iov.iov_len = buffer_size(&stream->read);
-      e = reactor_user_dispatch(&stream->user, REACTOR_STREAM_EVENT_READ, &iov);
-      if (e == REACTOR_ABORT)
-        return REACTOR_ABORT;
-      buffer_erase(&stream->read, 0, buffer_size(&stream->read) - iov.iov_len);
+      e = reactor_user_dispatch(&stream->user, REACTOR_STREAM_EVENT_DATA, 0);
+      if (e != REACTOR_OK)
+        return e;
     }
 
-  return reactor_stream_input_exception(stream, n);
-}
+  if (n == 0)
+    return reactor_user_dispatch(&stream->user, REACTOR_STREAM_EVENT_CLOSE, 0);
 
-static int reactor_stream_input(reactor_stream *stream)
-{
-  char block[REACTOR_STREAM_BLOCK_SIZE];
-  ssize_t n;
-  struct iovec iov;
-  int e;
-
-  if (buffer_size(&stream->read))
-    return reactor_stream_input_buffered(stream);
-
-  n = read(reactor_descriptor_fd(&stream->descriptor), block, sizeof block);
-  if (n == sizeof block)
-    {
-      reactor_stream_input_save(stream, block, sizeof block);
-      return reactor_stream_input_buffered(stream);
-    }
-
-  if (n > 0)
-    {
-      iov.iov_base = block;
-      iov.iov_len = n;
-      e = reactor_user_dispatch(&stream->user, REACTOR_STREAM_EVENT_READ, &iov);
-      if (e == REACTOR_ABORT)
-        return REACTOR_ABORT;
-      reactor_stream_input_save(stream, iov.iov_base, iov.iov_len);
-    }
-
-  return reactor_stream_input_exception(stream, n);
-}
-
-static int reactor_stream_output(reactor_stream *stream)
-{
-  int e;
-
-  e = reactor_stream_flush(stream);
-  if (e == REACTOR_ERROR)
-    return reactor_stream_error(stream);
-  if (!reactor_stream_blocked(stream))
-    return reactor_user_dispatch(&stream->user, REACTOR_STREAM_EVENT_WRITE, NULL);
   return REACTOR_OK;
 }
 
-#ifndef GCOV_BUILD
-static
-#endif
-int reactor_stream_event(void *state, int type, void *data)
+static reactor_status reactor_stream_handler(reactor_event *event)
 {
-  reactor_stream *stream = state;
+  reactor_stream *stream = event->state;
   int e;
 
-  (void) type;
-  switch (*(int *) data)
+  if (event->data & EPOLLIN)
     {
-    case EPOLLIN:
-      return reactor_stream_input(stream);
-    case EPOLLIN | EPOLLOUT:
       e = reactor_stream_input(stream);
-      if (e == REACTOR_OK)
-        e = reactor_stream_output(stream);
-      return e;
-    case EPOLLIN | EPOLLHUP:
-    case EPOLLIN | EPOLLRDHUP:
-    case EPOLLIN | EPOLLHUP | EPOLLRDHUP:
-      e = reactor_stream_input(stream);
-      if (e == REACTOR_OK)
-        e = reactor_stream_hangup(stream);
-      return e;
-    case EPOLLOUT:
-      return reactor_stream_output(stream);
-    case EPOLLHUP:
-    case EPOLLHUP | EPOLLRDHUP:
-      return reactor_stream_hangup(stream);
-    default:
-      return reactor_stream_error(stream);
+      if (e != REACTOR_OK)
+        return e;
     }
+
+  if (event->data & EPOLLOUT)
+    {
+      e = reactor_stream_flush(stream);
+      if (e != REACTOR_OK)
+        return reactor_stream_error(stream, "write error");
+
+      if (stream->flags & REACTOR_STREAM_FLAG_SHUTDOWN &&
+          !buffer_size(&stream->output))
+        (void) shutdown(reactor_fd_fileno(&stream->fd), SHUT_RDWR);
+    }
+
+  return REACTOR_OK;
 }
 
-int reactor_stream_open(reactor_stream *stream, reactor_user_callback *callback, void *state, int fd)
+void reactor_stream_construct(reactor_stream *stream, reactor_user_callback *callback, void *state)
 {
   reactor_user_construct(&stream->user, callback, state);
-  buffer_construct(&stream->read);
-  buffer_construct(&stream->write);
-  stream->blocked = 0;
-  return reactor_descriptor_open(&stream->descriptor, reactor_stream_event, stream, fd, EPOLLIN | EPOLLRDHUP | EPOLLET);
+  reactor_fd_construct(&stream->fd, reactor_stream_handler, stream);
+  buffer_construct(&stream->input);
+  buffer_construct(&stream->output);
 }
 
-void reactor_stream_close(reactor_stream *stream)
+void reactor_stream_user(reactor_stream *stream, reactor_user_callback *callback, void *state)
 {
-  reactor_descriptor_close(&stream->descriptor);
-  buffer_destruct(&stream->read);
-  buffer_destruct(&stream->write);
+  reactor_user_construct(&stream->user, callback, state);
 }
 
-int reactor_stream_blocked(reactor_stream *stream)
+void reactor_stream_destruct(reactor_stream *stream)
 {
-  return stream->blocked;
+  reactor_fd_destruct(&stream->fd);
+  buffer_destruct(&stream->input);
+  buffer_destruct(&stream->output);
+}
+
+void reactor_stream_reset(reactor_stream *stream)
+{
+  reactor_fd_close(&stream->fd);
+  buffer_clear(&stream->input);
+  buffer_clear(&stream->output);
+}
+
+void reactor_stream_open(reactor_stream *stream, int fd)
+{
+  stream->flags = 0;
+  reactor_fd_open(&stream->fd, fd, EPOLLIN | EPOLLET);
+}
+
+void *reactor_stream_data(reactor_stream *stream)
+{
+  return buffer_data(&stream->input);
+}
+
+size_t reactor_stream_size(reactor_stream *stream)
+{
+  return buffer_size(&stream->input);
+}
+
+void reactor_stream_consume(reactor_stream *stream, size_t size)
+{
+  buffer_erase(&stream->input, 0, size);
+}
+
+void *reactor_stream_segment(reactor_stream *stream, size_t size)
+{
+  size_t current_size = buffer_size(&stream->output);
+
+  buffer_reserve(&stream->output, current_size + size);
+  stream->output.size += size;
+  return (char *) buffer_data(&stream->output) + current_size;
 }
 
 void reactor_stream_write(reactor_stream *stream, void *data, size_t size)
 {
-  buffer_insert(&stream->write, buffer_size(&stream->write), data, size);
+  memcpy(reactor_stream_segment(stream, size), data, size);
 }
 
-void reactor_stream_write_string(reactor_stream *stream, char *string)
+reactor_status reactor_stream_flush(reactor_stream *stream)
 {
-  reactor_stream_write(stream, string, strlen(string));
-}
+  buffer *b;
+  ssize_t n;
+  char *data;
+  size_t size;
 
-int reactor_stream_flush(reactor_stream *stream)
-{
-  ssize_t n, size;
-  char *base;
-
-  base = buffer_data(&stream->write);
-  size = buffer_size(&stream->write);
-  do
+  b = &stream->output;
+  data = buffer_data(b);
+  size = buffer_size(b);
+  while (size)
     {
-      n = write(reactor_descriptor_fd(&stream->descriptor), base, size);
-      if (n == -1)
+      n = write(reactor_fd_fileno(&stream->fd), data, size);
+      if (n == -1 && errno == EAGAIN)
         break;
-      base += n;
+      if (n == -1)
+        return REACTOR_ERROR;
+      data += n;
       size -= n;
     }
-  while (size);
-  buffer_erase(&stream->write, 0, buffer_size(&stream->write) - size);
 
-  if (size)
-    {
-      if (errno != EAGAIN)
-        return REACTOR_ERROR;
-      if (!reactor_stream_blocked(stream))
-        {
-          stream->blocked = 1;
-          reactor_descriptor_set(&stream->descriptor, EPOLLIN | EPOLLOUT | EPOLLRDHUP | EPOLLET);
-        }
-      return REACTOR_OK;
-    }
+  buffer_erase(b, 0, buffer_size(b) - size);
 
-  if (reactor_stream_blocked(stream))
-    {
-      stream->blocked = 0;
-      reactor_descriptor_set(&stream->descriptor, EPOLLIN | EPOLLRDHUP | EPOLLET);
-    }
+  if (buffer_size(b))
+    reactor_stream_write_set(stream);
+  else
+    reactor_stream_write_clear(stream);
 
   return REACTOR_OK;
 }
 
-buffer *reactor_stream_buffer(reactor_stream *stream)
+void reactor_stream_shutdown(reactor_stream *stream)
 {
-  return &stream->write;
+  if (buffer_size(&stream->output))
+    stream->flags |= REACTOR_STREAM_FLAG_SHUTDOWN;
+  else
+    (void) shutdown(reactor_fd_fileno(&stream->fd), SHUT_RDWR);
 }

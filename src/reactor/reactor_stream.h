@@ -1,37 +1,42 @@
-#ifndef REACTOR_STREAM_H_INCLUDED
-#define REACTOR_STREAM_H_INCLUDED
+#ifndef REACTOR_REACTOR_STREAM_H_INCLUDED
+#define REACTOR_REACTOR_STREAM_H_INCLUDED
 
-#ifndef REACTOR_STREAM_BLOCK_SIZE
-#define REACTOR_STREAM_BLOCK_SIZE 131072
-#endif /* REACTOR_STREAM_BLOCK_SIZE */
+#define REACTOR_STREAM_BLOCK_SIZE 16384
 
-enum reactor_stream_event
+enum reactor_stream_events
 {
-  REACTOR_STREAM_EVENT_ERROR,
-  REACTOR_STREAM_EVENT_READ,
-  REACTOR_STREAM_EVENT_WRITE,
-  REACTOR_STREAM_EVENT_CLOSE
+ REACTOR_STREAM_EVENT_ERROR,
+ REACTOR_STREAM_EVENT_DATA,
+ REACTOR_STREAM_EVENT_CLOSE
+};
+
+enum reactor_stream_flags
+{
+ REACTOR_STREAM_FLAG_WRITE = 0x01,
+ REACTOR_STREAM_FLAG_SHUTDOWN = 0x02
 };
 
 typedef struct reactor_stream reactor_stream;
 struct reactor_stream
 {
-  reactor_user        user;
-  reactor_descriptor  descriptor;
-  buffer              read;
-  buffer              write;
-  int                 blocked;
+  reactor_user  user;
+  reactor_fd    fd;
+  buffer        input;
+  buffer        output;
+  int           flags;
 };
 
-int     reactor_stream_open(reactor_stream *, reactor_user_callback *, void *, int);
-void    reactor_stream_close(reactor_stream *);
-int     reactor_stream_blocked(reactor_stream *);
-void   *reactor_stream_data(reactor_stream *);
-size_t  reactor_stream_size(reactor_stream *);
-void    reactor_stream_consume(reactor_stream *, size_t);
-void    reactor_stream_write(reactor_stream *, void *, size_t);
-void    reactor_stream_write_string(reactor_stream *, char *);
-int     reactor_stream_flush(reactor_stream *);
-buffer *reactor_stream_buffer(reactor_stream *);
+void            reactor_stream_construct(reactor_stream *, reactor_user_callback *, void *);
+void            reactor_stream_user(reactor_stream *, reactor_user_callback *, void *);
+void            reactor_stream_destruct(reactor_stream *);
+void            reactor_stream_reset(reactor_stream *);
+void            reactor_stream_open(reactor_stream *, int);
+void           *reactor_stream_data(reactor_stream *);
+size_t          reactor_stream_size(reactor_stream *);
+void            reactor_stream_consume(reactor_stream *, size_t);
+void           *reactor_stream_segment(reactor_stream *, size_t);
+void            reactor_stream_write(reactor_stream *, void *, size_t);
+reactor_status  reactor_stream_flush(reactor_stream *);
+void            reactor_stream_shutdown(reactor_stream *);
 
-#endif /* REACTOR_STREAM_H_INCLUDED */
+#endif /* REACTOR_REACTOR_STREAM_H_INCLUDED */

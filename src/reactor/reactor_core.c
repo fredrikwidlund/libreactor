@@ -1,115 +1,142 @@
-#include <stdlib.h>
-#include <stdint.h>
+#define _GNU_SOURCE
+
+#include <stdio.h>
 #include <unistd.h>
-#include <fcntl.h>
-#include <signal.h>
+#include <time.h>
 #include <sys/epoll.h>
 
 #include <dynamic.h>
 
-#include "reactor_util.h"
-#include "reactor_user.h"
-#include "reactor_descriptor.h"
-#include "reactor_core.h"
-#include "reactor_pool.h"
+#include "../reactor.h"
 
+typedef struct reactor_core reactor_core;
 struct reactor_core
 {
-  int                 fd;
-  int                 events_active;
-  int                 events_current;
-  int                 events_received;
-  struct epoll_event  events[REACTOR_CORE_MAX_EVENTS];
-  reactor_pool        pool;
+  int                ref;
+  int                fd;
+  int                active;
+  int                received;
+  int                current;
+  uint64_t           now;
+  struct epoll_event events[REACTOR_CORE_MAX_EVENTS];
+  vector             next;
 };
 
-static __thread struct reactor_core core = {.fd = -1};
+static __thread reactor_core core = {0};
 
-int reactor_core_construct(void)
+static uint64_t reactor_core_time(void)
 {
-  int e;
+  struct timespec tv;
 
-  core = (struct reactor_core) {0};
-  core.fd = epoll_create1(EPOLL_CLOEXEC);
-  if (core.fd == -1)
-    return REACTOR_ERROR;
+  clock_gettime(CLOCK_REALTIME, &tv);
+  return (uint64_t) tv.tv_sec * 1000000000 + (uint64_t) tv.tv_nsec;
+}
 
-  e = reactor_pool_construct(&core.pool);
-  if (e == -1)
+void reactor_core_construct(void)
+{
+  if (!core.ref)
     {
-      (void) close(core.fd);
-      core.fd = -1;
-      return REACTOR_ERROR;
+      core = (reactor_core) {0};
+      core.now = reactor_core_time();
+      core.fd = epoll_create1(EPOLL_CLOEXEC);
+      reactor_assert_int_not_equal(core.fd, -1);
+      core.now = reactor_core_time();
+      vector_construct(&core.next, sizeof (reactor_user));
     }
 
-  return REACTOR_OK;
+  core.ref ++;
 }
 
 void reactor_core_destruct(void)
 {
-  if (core.fd != -1)
-    {
-      close(core.fd);
-      core.fd = -1;
-      reactor_pool_destruct(&core.pool);
-    }
+  if (!core.ref)
+    return;
+
+  core.ref --;
+  if (!core.ref)
+    (void) close(core.fd);
 }
 
-int reactor_core_run(void)
+void reactor_core_run(void)
 {
-  sigset_t set;
+  reactor_user *user;
+  size_t i;
 
-  sigemptyset(&set);
-  while (core.events_active)
+  reactor_assert_int_not_equal(core.ref, 0);
+  while (core.active || vector_size(&core.next))
     {
-      core.events_received = epoll_pwait(core.fd, core.events, REACTOR_CORE_MAX_EVENTS, -1, &set);
-      if (core.events_received == -1)
-        return REACTOR_ERROR;
-      for (core.events_current = 0; core.events_current < core.events_received; core.events_current ++)
-        if (core.events[core.events_current].events)
-          (void) reactor_descriptor_event(core.events[core.events_current].data.ptr, core.events[core.events_current].events);
-    }
+      if (vector_size(&core.next))
+        {
+          user = vector_data(&core.next);
+          for (i = 0; i < vector_size(&core.next); i ++)
+            (void) reactor_user_dispatch(&user[i], 0, 0);
+          vector_clear(&core.next, NULL);
+        }
 
-  return REACTOR_OK;
+      if (core.active)
+        {
+          core.received = epoll_wait(core.fd, core.events, REACTOR_CORE_MAX_EVENTS, -1);
+          reactor_assert_int_not_equal(core.received, -1);
+          core.now = reactor_core_time();
+          for (core.current = 0; core.current < core.received; core.current ++)
+            (void) reactor_user_dispatch(core.events[core.current].data.ptr, REACTOR_FD_EVENT, core.events[core.current].events);
+        }
+    }
 }
 
-int reactor_core_add(reactor_descriptor *descriptor, int events)
+void reactor_core_add(reactor_user *user, int fd, int events)
 {
   int e;
 
-  (void) fcntl(reactor_descriptor_fd(descriptor), F_SETFL, O_NONBLOCK);
-  e = epoll_ctl(core.fd, EPOLL_CTL_ADD, reactor_descriptor_fd(descriptor),
-                (struct epoll_event[]){{.events = events, .data.ptr = descriptor}});
-  if (e == -1)
-    return REACTOR_ERROR;
-
-  core.events_active ++;
-  return REACTOR_OK;
+  e = epoll_ctl(core.fd, EPOLL_CTL_ADD, fd, (struct epoll_event[]){{.events = events, .data.ptr = user}});
+  reactor_assert_int_not_equal(e, -1);
+  core.active ++;
 }
 
-void reactor_core_delete(reactor_descriptor *descriptor)
+void reactor_core_modify(reactor_user *user, int fd, int events)
 {
-  (void) epoll_ctl(core.fd, EPOLL_CTL_DEL, reactor_descriptor_fd(descriptor), NULL);
-  reactor_core_flush(descriptor);
+  int e;
+
+  e = epoll_ctl(core.fd, EPOLL_CTL_MOD, fd, (struct epoll_event[]){{.events = events, .data.ptr = user}});
+  reactor_assert_int_not_equal(e, -1);
 }
 
-void reactor_core_modify(reactor_descriptor *descriptor, int events)
+void reactor_core_deregister(reactor_user *user)
 {
-  (void) epoll_ctl(core.fd, EPOLL_CTL_MOD, reactor_descriptor_fd(descriptor),
-                   (struct epoll_event[]){{.events = events, .data.ptr = descriptor}});
+  int i;
+
+  for (i = core.current; i < core.received; i ++)
+    if (core.events[i].data.ptr == user)
+      core.events[i].data.ptr = &reactor_user_default;
+
+  core.active --;
 }
 
-void reactor_core_flush(reactor_descriptor *descriptor)
+void reactor_core_delete(reactor_user *user, int fd)
 {
-  ssize_t i;
+  int e;
 
-  core.events_active --;
-  for (i = core.events_current; i < core.events_received; i ++)
-    if (core.events[i].data.ptr == descriptor)
-      core.events[i].events = 0;
+  e = epoll_ctl(core.fd, EPOLL_CTL_DEL, fd, NULL);
+  reactor_assert_int_not_equal(e, -1);
+  reactor_core_deregister(user);
 }
 
-void reactor_core_enqueue(reactor_user_callback *callback, void *state)
+reactor_id reactor_core_schedule(reactor_user_callback *callback, void *state)
 {
-  reactor_pool_enqueue(&core.pool, callback, state);
+  reactor_user user;
+
+  reactor_user_construct(&user, callback, state);
+  vector_push_back(&core.next, &user);
+  return vector_size(&core.next);
+}
+
+void reactor_core_cancel(reactor_id id)
+{
+  if (id > 0)
+    ((reactor_user *) vector_data(&core.next))[id - 1] = reactor_user_default;
+}
+
+uint64_t reactor_core_now(void)
+{
+  return core.now;
 }

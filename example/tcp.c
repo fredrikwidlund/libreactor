@@ -1,98 +1,71 @@
-#define _GNU_SOURCE
-
 #include <stdio.h>
-#include <stdlib.h>
 #include <stdint.h>
+#include <stdlib.h>
 #include <unistd.h>
-#include <signal.h>
-#include <string.h>
-#include <netdb.h>
-#include <sys/socket.h>
-#include <sys/epoll.h>
 #include <err.h>
 
 #include <dynamic.h>
-#include <reactor.h>
 
-static const char reply[] =
-  "HTTP/1.1 200 OK\r\n"
-  "Date: Sun, 26 Nov 2017 18:22:42 GMT\r\n"
-  "Content-Length: 3\r\n"
-  "Connection: keep-alive\r\n"
-  "\r\n"
-  "ok\n";
+#include "reactor.h"
 
-struct client
+struct tcp
 {
-  reactor_descriptor descriptor;
+  reactor_net    net;
+  reactor_stream stream;
 };
 
-struct server
+static reactor_status net_handler(reactor_event *event)
 {
-  reactor_tcp tcp;
-};
+  struct tcp *tcp = event->state;
 
-int client_event(void *state, int type, void *data)
-{
-  struct client *client = state;
-  int flags = *(int *) data;
-  char request[4096];
-  int fd;
-  ssize_t n;
-
-  (void) type;
-  if (flags != EPOLLIN)
+  switch (event->type)
     {
-      reactor_descriptor_close(&client->descriptor);
-      free(client);
-      return REACTOR_ERROR;
+    case REACTOR_NET_EVENT_CONNECT:
+      reactor_net_destruct(&tcp->net);
+      reactor_stream_open(&tcp->stream, event->data);
+      return REACTOR_ABORT;
+    case REACTOR_NET_EVENT_ERROR:
+    default:
+      (void) fprintf(stderr, "%s\n", (char *) event->data);
+      reactor_net_destruct(&tcp->net);
+      return REACTOR_ABORT;
     }
-
-  fd = reactor_descriptor_fd(&client->descriptor);
-  n = read(fd, request, sizeof request);
-  if (n <= 0)
-    {
-      reactor_descriptor_close(&client->descriptor);
-      free(client);
-      return REACTOR_ERROR;
-    }
-
-  if (!memmem(request, n, "\r\n\r\n", 4))
-    err(1, "request");
-
-  n = write(fd, reply, sizeof reply - 1);
-  if (n != sizeof reply - 1)
-    err(1, "write");
-
-  return REACTOR_OK;
 }
 
-int server_event(void *state, int type, void *data)
+static reactor_status stream_handler(reactor_event *event)
 {
-  struct server *server = state;
-  struct client *client;
+  struct tcp *tcp = event->state;
 
-  if (type != REACTOR_TCP_EVENT_ACCEPT)
+  switch (event->type)
     {
-      reactor_tcp_close(&server->tcp);
-      return REACTOR_ERROR;
+    case REACTOR_STREAM_EVENT_DATA:
+      (void) printf("[data %lu]\n", reactor_stream_size(&tcp->stream));
+      reactor_stream_write(&tcp->stream, reactor_stream_data(&tcp->stream), reactor_stream_size(&tcp->stream));
+      reactor_stream_consume(&tcp->stream, reactor_stream_size(&tcp->stream));
+      return REACTOR_OK;
+    case REACTOR_STREAM_EVENT_ERROR:
+    default:
+      (void) fprintf(stderr, "%s\n", (char *) event->data);
+      /* fall through */
+    case REACTOR_STREAM_EVENT_CLOSE:
+      reactor_stream_destruct(&tcp->stream);
+      return REACTOR_ABORT;
     }
-
-  client = malloc(sizeof *client);
-  reactor_descriptor_open(&client->descriptor, client_event, client, *(int *) data, EPOLLIN | EPOLLET);
-  return REACTOR_OK;
 }
 
-int main()
+int main(int argc, char **argv)
 {
-  struct server server;
+  struct tcp tcp;
   int e;
 
-  signal(SIGPIPE, SIG_IGN);
-  reactor_core_construct();
-  e = reactor_tcp_open(&server.tcp, server_event, &server, "0.0.0.0", "80", REACTOR_TCP_FLAG_SERVER);
-  if (e == REACTOR_ERROR)
-    err(1, "reactor_tcp_open");
-  reactor_core_run();
-  reactor_core_destruct();
+  (void) reactor_construct();
+  reactor_net_construct(&tcp.net, net_handler, &tcp);
+  reactor_stream_construct(&tcp.stream, stream_handler, &tcp);
+
+  e = reactor_net_connect(&tcp.net, argc >= 2 ? argv[1] : "127.0.0.1", argc >= 3 ? argv[2] : "8080");
+  if (e != REACTOR_OK)
+    err(1, "reactor_net_connect");
+
+  (void) reactor_run();
+  reactor_destruct();
 }
