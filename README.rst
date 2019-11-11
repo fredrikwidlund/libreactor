@@ -1,6 +1,6 @@
-==========
-libreactor
-==========
+=================
+libreactor v1.0.0
+=================
 
 .. image:: https://travis-ci.org/fredrikwidlund/libreactor.svg?branch=master
   :target: https://travis-ci.org/fredrikwidlund/libreactor
@@ -17,8 +17,9 @@ libreactor
 * has been production stable for several years serving tens of millions of requests per day
 * has high level abstractions like http servers and worker pools
 
+--------
 Building
-========
+--------
 
 The framework depends on libdynamic_ and libjansson_ so please install these first.
 
