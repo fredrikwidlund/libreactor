@@ -1,5 +1,5 @@
 libreactor
-======
+==========
 
 .. image:: https://travis-ci.org/fredrikwidlund/libreactor.svg?branch=master
   :target: https://travis-ci.org/fredrikwidlund/libreactor
