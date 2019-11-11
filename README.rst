@@ -8,6 +8,15 @@ libreactor
 .. image:: https://coveralls.io/repos/github/fredrikwidlund/libreactor/badge.svg?branch=master
   :target: https://coveralls.io/github/fredrikwidlund/libreactor?branch=master
 
+**Libreactor...**
+
+* is a modular event driver application framework written in C
+* is an extendable generic framework that can be used for web applications, and many other things
+* comes with a very low overhead
+* is fast (pretty much as fast as it gets)
+* has been production stable for several years serving tens of millions of requests per day
+* has high level abstractions like http servers and worker pools
+
 Building
 ========
 
