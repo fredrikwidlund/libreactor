@@ -64,7 +64,7 @@ Hello world web server
       reactor_run();
       reactor_destruct();
     }
-    $ gcc -Wall -Wpedantic -std=c11 -O2 -o hello hello.c -lreactor -ldynamic -pthread -flto -fuse-linker-plugin
+    $ gcc -Wall -Wpedantic -std=c11 -O2 -o hello hello.c -lreactor -ldynamic -pthread -flto
 
 .. _libdynamic: https://github.com/fredrikwidlund/libdynamic
 .. _libjansson: https://github.com/akheron/jansson
