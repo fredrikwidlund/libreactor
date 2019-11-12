@@ -40,6 +40,7 @@ Hello world web server
 
 .. code-block:: C
 
+    $ cat hello.c 
     #include <stdio.h>
     #include <stdint.h>
     #include <dynamic.h>
@@ -62,6 +63,7 @@ Hello world web server
       reactor_run();
       reactor_destruct();
     }
+    $ gcc -Wall -O2 -o hello hello.c -lreactor -ldynamic -pthread -flto -fuse-linker-plugin
 
 .. _libdynamic: https://github.com/fredrikwidlund/libdynamic
 .. _libjansson: https://github.com/akheron/jansson
