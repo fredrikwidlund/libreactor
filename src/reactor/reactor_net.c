@@ -58,7 +58,7 @@ static reactor_status reactor_net_resolver_handler(reactor_event *event)
   fileno = socket(ai->ai_family, SOCK_STREAM | SOCK_NONBLOCK, 0);
   reactor_assert_int_not_equal(fileno, -1);
 
-  if (ai->ai_flags & AI_PASSIVE)
+ if (net->options & REACTOR_NET_OPTION_PASSIVE)
     {
       if (net->options & REACTOR_NET_OPTION_REUSEPORT)
         (void) setsockopt(fileno, SOL_SOCKET, SO_REUSEPORT, (int[]){1}, sizeof(int));
@@ -130,6 +130,7 @@ reactor_status reactor_net_bind(reactor_net *net, char *node, char *service)
   if (reactor_fd_active(&net->fd))
     return REACTOR_ERROR;
 
+  net->options |= REACTOR_NET_OPTION_PASSIVE;
   net->resolver_job = reactor_resolver_request(reactor_net_resolver_handler, net, node, service, 0, SOCK_STREAM, AI_PASSIVE);
   return net->resolver_job ? REACTOR_OK : REACTOR_ERROR;
 }

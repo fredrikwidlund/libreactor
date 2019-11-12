@@ -13,7 +13,8 @@ enum reactor_net_events
 enum reactor_net_options
 {
  REACTOR_NET_OPTION_REUSEPORT = 0x01,
- REACTOR_NET_OPTION_REUSEADDR = 0x02
+ REACTOR_NET_OPTION_REUSEADDR = 0x02,
+ REACTOR_NET_OPTION_PASSIVE   = 0x04
 };
 
 typedef enum reactor_net_options reactor_net_options;
