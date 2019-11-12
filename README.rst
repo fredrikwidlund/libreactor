@@ -47,7 +47,7 @@ Hello world web server
     
     static reactor_status hello(reactor_event *event)
     {
-      reactor_server_sesssion *session = (reactor_server_session *) event->data;
+      reactor_server_session *session = (reactor_server_session *) event->data;
       reactor_server_ok(session, reactor_vector_string("text/plain"), reactor_vector_string("Hello, World!"));
       return REACTOR_OK;
     }
