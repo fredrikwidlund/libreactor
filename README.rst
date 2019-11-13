@@ -8,7 +8,7 @@ libreactor v1.0.0
 .. image:: https://coveralls.io/repos/github/fredrikwidlund/libreactor/badge.svg?branch=master
   :target: https://coveralls.io/github/fredrikwidlund/libreactor?branch=master
 
-* is a modular event driver application framework written in C
+* is a modular event driven application framework written in C
 * is an extendable generic framework that can be used for web applications, and many other things
 * comes with a very low overhead
 * is fast (pretty much as fast as it gets)
