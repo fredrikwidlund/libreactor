@@ -62,7 +62,7 @@ example/http \
 example/couch \
 example/httpd \
 example/server \
-example/simple
+example/hello
 
 example_example_LDFLAGS = -pthread
 example_example_LDADD = libreactor.la -ldynamic
@@ -91,8 +91,8 @@ example_couch_LDADD = libreactor.la -ldynamic -ljansson
 example_server_LDFLAGS = -pthread
 example_server_LDADD = libreactor.la -ldynamic -ljansson
 
-example_simple_LDFLAGS = -pthread
-example_simple_LDADD = libreactor.la -ldynamic -ljansson
+example_hello_LDFLAGS = -pthread
+example_hello_LDADD = libreactor.la -ldynamic -ljansson
 
 MAINTAINERCLEANFILES = aclocal.m4 config.h.in configure Makefile.in libreactor-?.?.?.tar.gz
 
