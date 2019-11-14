@@ -55,10 +55,19 @@ static reactor_status reactor_server_process(reactor_server_session *session, re
 
 static reactor_status reactor_server_session_handler(reactor_event *event)
 {
+  reactor_server_session *session = event->state;
+  int e;
+
   switch (event->type)
     {
     case REACTOR_HTTP_EVENT_REQUEST:
-      return reactor_server_process(event->state, (reactor_http_request *) event->data);
+      return reactor_server_process(session, (reactor_http_request *) event->data);
+    case REACTOR_HTTP_EVENT_ERROR:
+      e = reactor_user_dispatch(&session->server->user, REACTOR_SERVER_EVENT_WARNING, event->data);
+      if (e != REACTOR_OK)
+        return e;
+      reactor_server_close(session);
+      return REACTOR_ABORT;
     default:
       reactor_server_close(event->state);
       return REACTOR_ABORT;
