@@ -28,7 +28,7 @@ static uint64_t reactor_core_time(void)
 {
   struct timespec tv;
 
-  clock_gettime(CLOCK_REALTIME, &tv);
+  clock_gettime(CLOCK_MONOTONIC, &tv);
   return (uint64_t) tv.tv_sec * 1000000000 + (uint64_t) tv.tv_nsec;
 }
 
