@@ -23,13 +23,13 @@ The framework depends on libdynamic_ and libjansson_ so please install these fir
 
 .. code-block:: shell
 
-    $ apt-get install -y build-essential libjansson-dev wget
-    $ wget https://github.com/fredrikwidlund/libdynamic/releases/download/v1.3.0/libdynamic-1.3.0.tar.gz
-    $ tar fvxz libdynamic-1.3.0.tar.gz
-    $ (cd libdynamic-1.3.0; ./configure --prefix=/usr AR=gcc-ar NM=gcc-nm RANLIB=gcc-ranlib; make install)
-    $ wget https://github.com/fredrikwidlund/libreactor/releases/download/v1.0.0/libreactor-1.0.0.tar.gz
-    $ tar fvxz libreactor-1.0.0.tar.gz
-    $ (cd libreactor-1.0.0; ./configure --prefix=/usr AR=gcc-ar NM=gcc-nm RANLIB=gcc-ranlib; make install)
+    apt-get install -y build-essential libjansson-dev wget
+    wget https://github.com/fredrikwidlund/libdynamic/releases/download/v1.3.0/libdynamic-1.3.0.tar.gz
+    tar fvxz libdynamic-1.3.0.tar.gz
+    (cd libdynamic-1.3.0; ./configure --prefix=/usr AR=gcc-ar NM=gcc-nm RANLIB=gcc-ranlib; make install)
+    wget https://github.com/fredrikwidlund/libreactor/releases/download/v1.0.0/libreactor-1.0.0.tar.gz
+    tar fvxz libreactor-1.0.0.tar.gz
+    (cd libreactor-1.0.0; ./configure --prefix=/usr AR=gcc-ar NM=gcc-nm RANLIB=gcc-ranlib; make install)
 
 --------
 Examples
@@ -40,7 +40,7 @@ Hello world web server
 
 .. code-block:: C
 
-    $ cat hello.c 
+    $ cat example/hello.c 
     #include <stdio.h>
     #include <stdint.h>
     #include <unistd.h>
@@ -65,6 +65,27 @@ Hello world web server
       reactor_destruct();
     }
     $ gcc -Wall -Wpedantic -std=c11 -O2 -o hello hello.c -lreactor -ldynamic -pthread -flto
+
+----------
+Try it out
+----------
+
+The following will build a portable static binary ``example/hello`` (~90kB) for the above example code
+
+.. code-block:: shell
+
+    wget https://github.com/fredrikwidlund/libreactor/releases/download/v1.0.0/libreactor-1.0.0.tar.gz
+    tar fvxz libreactor-1.0.0.tar.gz
+    cd libreactor-1.0.0
+    ./configure --prefix=/usr AR=gcc-ar NM=gcc-nm RANLIB=gcc-ranlib
+    make hello
+
+Run it
+
+.. code-block:: shell
+
+    ./example/hello &
+    curl localhost:8080
 
 .. _libdynamic: https://github.com/fredrikwidlund/libdynamic
 .. _libjansson: https://github.com/akheron/jansson

@@ -143,6 +143,14 @@ test_reactor_resolver_LDADD = $(CHECK_LDADD)
 test_reactor_resolver_LDFLAGS = $(CHECK_LDFLAGS_EXTRA)
 test_reactor_resolver_SOURCES = test/reactor_resolver.c test/mock.c
 
-dist_noinst_SCRIPTS = test/valgrind.sh test/coverage.sh
+dist_noinst_SCRIPTS = test/valgrind.sh test/coverage.sh Dockerfile
 
 TESTS = $(check_PROGRAMS) test/valgrind.sh test/coverage.sh
+
+hello:
+	docker build -t reactor-sdk .
+	docker run --rm -v ${PWD}/example:/example reactor-sdk \
+	gcc -Wall -Wpedantic -flto -O2 -pthread -static -no-pie \
+	example/hello.c -o example/hello \
+	-lreactor -ldynamic
+	strip example/hello
