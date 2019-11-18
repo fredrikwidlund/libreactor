@@ -156,7 +156,9 @@ void reactor_server_respond(reactor_server_session *session, reactor_http_respon
                              reactor_vector_string("Access-Control-Allow-Origin"), reactor_vector_string("*"));
 
   reactor_http_write_response(&session->http, response);
-  reactor_http_flush(&session->http);
+
+  if (session->flags & REACTOR_SERVER_SESSION_REGISTERED)
+    reactor_http_flush(&session->http);
 
   if (session->flags & REACTOR_SERVER_SESSION_CLOSE)
     reactor_http_shutdown(&session->http);
