@@ -75,11 +75,17 @@ void reactor_core_run(void)
 
       if (core.active)
         {
+          reactor_stats_sleep_start();
           core.received = epoll_wait(core.fd, core.events, REACTOR_CORE_MAX_EVENTS, -1);
+          reactor_stats_sleep_end(core.received);
           reactor_assert_int_not_equal(core.received, -1);
           core.now = reactor_core_time();
           for (core.current = 0; core.current < core.received; core.current ++)
-            (void) reactor_user_dispatch(core.events[core.current].data.ptr, REACTOR_FD_EVENT, core.events[core.current].events);
+            {
+              reactor_stats_event_start();
+              (void) reactor_user_dispatch(core.events[core.current].data.ptr, REACTOR_FD_EVENT, core.events[core.current].events);
+              reactor_stats_event_end();
+            }
         }
     }
 }

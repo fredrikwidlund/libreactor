@@ -16,6 +16,7 @@ extern "C" {
 #include "reactor/reactor_user.h"
 #include "reactor/reactor_utility.h"
 #include "reactor/reactor_core.h"
+#include "reactor/reactor_stats.h"
 #include "reactor/reactor_fd.h"
 #include "reactor/reactor_pool.h"
 #include "reactor/reactor_timer.h"

@@ -1,7 +1,7 @@
 #ifndef REACTOR_REACTOR_CORE_H_INCLUDED
 #define REACTOR_REACTOR_CORE_H_INCLUDED
 
-#define REACTOR_CORE_MAX_EVENTS 32
+#define REACTOR_CORE_MAX_EVENTS 64
 
 void       reactor_core_construct(void);
 void       reactor_core_destruct(void);

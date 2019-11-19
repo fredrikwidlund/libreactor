@@ -11,6 +11,7 @@ src/reactor/reactor_vector.c \
 src/reactor/reactor_utility.c \
 src/reactor/reactor_user.c \
 src/reactor/reactor_core.c \
+src/reactor/reactor_stats.c \
 src/reactor/reactor_fd.c \
 src/reactor/reactor_timer.c \
 src/reactor/reactor_pool.c \
@@ -29,6 +30,7 @@ src/reactor/reactor_vector.h \
 src/reactor/reactor_utility.h \
 src/reactor/reactor_user.h \
 src/reactor/reactor_core.h \
+src/reactor/reactor_stats.h \
 src/reactor/reactor_fd.h \
 src/reactor/reactor_timer.h \
 src/reactor/reactor_pool.h \
