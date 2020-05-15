@@ -40,7 +40,7 @@ struct reactor_pool
   list                jobs;
 };
 
-static __thread reactor_pool pool = {0};
+static __thread reactor_pool r_pool = {0};
 
 static void *reactor_pool_worker_thread(void *arg)
 {
@@ -66,7 +66,7 @@ static void reactor_pool_release_worker(void *item)
 {
   reactor_pool_worker *worker = item;
 
-  pool.worker_count --;
+  r_pool.worker_count --;
   pthread_cancel(worker->thread);
   pthread_join(worker->thread, NULL);
 }
@@ -76,15 +76,15 @@ static void reactor_pool_grow(void)
   reactor_pool_worker *worker;
   int e;
 
-  if (pool.worker_count >= REACTOR_POOL_WORKER_COUNT_MAX)
+  if (r_pool.worker_count >= REACTOR_POOL_WORKER_COUNT_MAX)
     return;
 
-  worker = list_push_back(&pool.workers, NULL, sizeof (reactor_pool_worker));
-  worker->in = pool.out[0];
-  worker->out = pool.in[1];
+  worker = list_push_back(&r_pool.workers, NULL, sizeof (reactor_pool_worker));
+  worker->in = r_pool.out[0];
+  worker->out = r_pool.in[1];
   e = pthread_create(&worker->thread, NULL, reactor_pool_worker_thread, worker);
   reactor_assert_int_equal(e, 0);
-  pool.worker_count ++;
+  r_pool.worker_count ++;
 }
 
 static reactor_status reactor_pool_receive(reactor_event *event)
@@ -95,7 +95,7 @@ static reactor_status reactor_pool_receive(reactor_event *event)
   reactor_assert_int_equal(event->data, EPOLLIN);
   while (1)
     {
-      n = read(pool.in[0], &job, sizeof job);
+      n = read(r_pool.in[0], &job, sizeof job);
       if (n == -1)
         {
           reactor_assert_int_equal(errno, EAGAIN);
@@ -106,9 +106,9 @@ static reactor_status reactor_pool_receive(reactor_event *event)
       (void) reactor_user_dispatch(&job->user, REACTOR_POOL_EVENT_RETURN, 0);
 
       list_erase(job, NULL);
-      pool.job_count --;
-      if (!pool.job_count)
-        reactor_core_delete(&pool.user, pool.in[0]);
+      r_pool.job_count --;
+      if (!r_pool.job_count)
+        reactor_core_delete(&r_pool.user, r_pool.in[0]);
     }
 
   return REACTOR_OK;
@@ -118,44 +118,44 @@ void reactor_pool_construct(void)
 {
   int e;
 
-  if (!pool.ref)
+  if (!r_pool.ref)
     {
-      reactor_user_construct(&pool.user, reactor_pool_receive, NULL);
+      reactor_user_construct(&r_pool.user, reactor_pool_receive, NULL);
 
-      e = pipe(pool.out);
+      e = pipe(r_pool.out);
       reactor_assert_int_not_equal(e, -1);
 
-      e = pipe(pool.in);
+      e = pipe(r_pool.in);
       reactor_assert_int_not_equal(e, -1);
 
-      e = fcntl(pool.in[0], F_SETFL, O_NONBLOCK);
+      e = fcntl(r_pool.in[0], F_SETFL, O_NONBLOCK);
       reactor_assert_int_not_equal(e, -1);
 
-      pool.worker_count = 0;
-      list_construct(&pool.workers);
+      r_pool.worker_count = 0;
+      list_construct(&r_pool.workers);
 
-      pool.job_count = 0;
-      list_construct(&pool.jobs);
+      r_pool.job_count = 0;
+      list_construct(&r_pool.jobs);
     }
 
-  pool.ref ++;
+  r_pool.ref ++;
 }
 
 void reactor_pool_destruct(void)
 {
-  if (!pool.ref)
+  if (!r_pool.ref)
     return;
 
-  pool.ref --;
-  if (!pool.ref)
+  r_pool.ref --;
+  if (!r_pool.ref)
     {
-      list_destruct(&pool.workers, reactor_pool_release_worker);
-      list_destruct(&pool.jobs, NULL);
+      list_destruct(&r_pool.workers, reactor_pool_release_worker);
+      list_destruct(&r_pool.jobs, NULL);
 
-      close(pool.out[0]);
-      close(pool.out[1]);
-      close(pool.in[0]);
-      close(pool.in[1]);
+      close(r_pool.out[0]);
+      close(r_pool.out[1]);
+      close(r_pool.in[0]);
+      close(r_pool.in[1]);
     }
 }
 
@@ -164,17 +164,17 @@ void reactor_pool_dispatch(reactor_user_callback *callback, void *state)
   reactor_pool_job *job;
   ssize_t n;
 
-  if (pool.job_count >= pool.worker_count)
+  if (r_pool.job_count >= r_pool.worker_count)
     reactor_pool_grow();
 
-  job = list_push_back(&pool.jobs, NULL, sizeof *job);
+  job = list_push_back(&r_pool.jobs, NULL, sizeof *job);
   reactor_user_construct(&job->user, callback, state);
 
-  n = write(pool.out[1], &job, sizeof job);
+  n = write(r_pool.out[1], &job, sizeof job);
   reactor_assert_int_equal(n, sizeof job);
 
-  if (!pool.job_count)
-    reactor_core_add(&pool.user, pool.in[0], EPOLLIN);
+  if (!r_pool.job_count)
+    reactor_core_add(&r_pool.user, r_pool.in[0], EPOLLIN);
 
-  pool.job_count ++;
+  r_pool.job_count ++;
 }

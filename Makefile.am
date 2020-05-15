@@ -43,7 +43,7 @@ src/reactor/reactor_server.h
 
 lib_LTLIBRARIES = libreactor.la
 libreactor_la_SOURCES = $(SOURCE_FILES) $(HEADER_FILES)
-libreactor_la_LDFLAGS = -static -ldynamic
+libreactor_la_LDFLAGS = -static -ldynamic -lpthread
 
 headerfilesdir = $(includedir)/reactor
 headerfiles_HEADERS = $(HEADER_FILES)
