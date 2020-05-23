@@ -1,7 +1,7 @@
 AUTOMAKE_OPTIONS = subdir-objects
 
 ACLOCAL_AMFLAGS =  -I m4
-AM_CFLAGS = -std=gnu11 -flto -fuse-linker-plugin -I$(srcdir)/src
+AM_CFLAGS = -std=gnu11 -g -O3 -flto -fuse-linker-plugin -I$(srcdir)/src
 
 SOURCE_FILES = \
 src/picohttpparser/picohttpparser.c \
