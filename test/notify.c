@@ -60,37 +60,49 @@ static void basic()
   assert_true(path);
   core_construct(NULL);
 
+  // watch on already open notifier
+  notify_construct(&notify, callback_abort, &notify);
+  notify_watch(&notify, path, IN_CLOSE_WRITE);
+  notify_watch(&notify, path, IN_CLOSE_WRITE);
+  core_loop(NULL);
+
   // notify on close write
-  notify_construct(&notify, callback_abort, &notify, path, IN_CLOSE_WRITE);
+  notify_construct(&notify, callback_abort, &notify);
+  notify_watch(&notify, path, IN_CLOSE_WRITE);
   touch(path, "test");
   core_loop(NULL);
 
   // notify on close write
-  notify_construct(&notify, callback_ok, &notify, path, IN_CLOSE_WRITE);
+  notify_construct(&notify, callback_ok, &notify);
+  notify_watch(&notify, path, IN_CLOSE_WRITE);
   touch(path, "test");
   core_loop(NULL);
 
   // read error when notify
   assert_true(path);
-  notify_construct(&notify, callback_abort, &notify, path, IN_CLOSE_WRITE);
+  notify_construct(&notify, callback_abort, &notify);
+  notify_watch(&notify, path, IN_CLOSE_WRITE);
   touch(path, "test");
   debug_read = ENOBUFS;
   core_loop(NULL);
   debug_read = 0;
 
   // notify error
-  notify_construct(&notify, callback_abort, &notify, "/doesnotexist", IN_CLOSE_WRITE);
+  notify_construct(&notify, callback_abort, &notify);
+  notify_watch(&notify, "/doesnotexist", IN_CLOSE_WRITE);
   core_loop(NULL);
 
   // notify error
-  notify_construct(&notify, callback_abort, &notify, "/doesnotexist", IN_CLOSE_WRITE);
+  notify_construct(&notify, callback_abort, &notify);
+  notify_watch(&notify, "/doesnotexist", IN_CLOSE_WRITE);
   assert_true(notify_error(&notify));
   notify_destruct(&notify);
   core_loop(NULL);
 
   // notify init error
   debug_inotify_init1 = 1;
-  notify_construct(&notify, callback_abort, &notify, "/", IN_CLOSE_WRITE);
+  notify_construct(&notify, callback_abort, &notify);
+  notify_watch(&notify, "/", IN_CLOSE_WRITE);
   assert_true(notify_error(&notify));
   notify_destruct(&notify);
   core_loop(NULL);

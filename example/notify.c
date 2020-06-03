@@ -34,7 +34,8 @@ int main(int argc, char **argv)
     }
 
   core_construct(NULL);
-  notify_construct(&notify, callback, &notify, argv[1], IN_ALL_EVENTS);
+  notify_construct(&notify, callback, &notify);
+  notify_watch(&notify, argv[1], IN_ALL_EVENTS);
   core_loop(NULL);
   core_destruct(NULL);
 }

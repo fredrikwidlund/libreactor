@@ -47,11 +47,20 @@ static core_status notify_event(core_event *event)
   return CORE_OK;
 }
 
-void notify_construct(notify *notify, core_callback *callback, void *state, char *path, uint32_t mask)
+void notify_construct(notify *notify, core_callback *callback, void *state)
+{
+  *notify = (struct notify) {.user = {.callback = callback, .state = state}, .fd = -1};
+}
+
+void notify_watch(notify *notify, char *path, uint32_t mask)
 {
   int fd, e;
 
-  *notify = (struct notify) {.user = {.callback = callback, .state = state}, .fd = -1};
+  if (notify->fd != -1)
+    {
+      notify_abort(notify);
+      return;
+    }
 
   fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
   if (fd == -1)

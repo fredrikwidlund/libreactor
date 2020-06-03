@@ -17,8 +17,9 @@ struct notify
   int          error;
 };
 
-void notify_construct(notify *, core_callback *, void *, char *, uint32_t);
+void notify_construct(notify *, core_callback *, void *);
 void notify_destruct(notify *);
+void notify_watch(notify *, char *, uint32_t);
 int  notify_error(notify *);
 
 #endif /* NOTIFY_H_INCLUDED */
