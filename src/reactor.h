@@ -11,6 +11,7 @@ extern "C" {
 #endif
 
 #include "notify/notify.h"
+#include "stream/stream.h"
 
 #ifdef __cplusplus
 }

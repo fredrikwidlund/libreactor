@@ -64,6 +64,7 @@ static void basic()
   notify_construct(&notify, callback_abort, &notify);
   notify_watch(&notify, path, IN_CLOSE_WRITE);
   notify_watch(&notify, path, IN_CLOSE_WRITE);
+  assert_false(notify_valid(&notify));
   core_loop(NULL);
 
   // notify on close write
@@ -95,7 +96,7 @@ static void basic()
   // notify error
   notify_construct(&notify, callback_abort, &notify);
   notify_watch(&notify, "/doesnotexist", IN_CLOSE_WRITE);
-  assert_true(notify_error(&notify));
+  assert_false(notify_valid(&notify));
   notify_destruct(&notify);
   core_loop(NULL);
 
@@ -103,7 +104,7 @@ static void basic()
   debug_inotify_init1 = 1;
   notify_construct(&notify, callback_abort, &notify);
   notify_watch(&notify, "/", IN_CLOSE_WRITE);
-  assert_true(notify_error(&notify));
+  assert_false(notify_valid(&notify));
   notify_destruct(&notify);
   core_loop(NULL);
   debug_inotify_init1 = 0;

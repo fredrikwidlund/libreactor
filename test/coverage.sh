@@ -1,6 +1,6 @@
 #!/bin/sh
 
-for file in notify
+for file in notify stream
 do
     echo [$file]
     test=`gcov -b src/$file/libreactor_test_a-$file | grep -A4 File.*$file`

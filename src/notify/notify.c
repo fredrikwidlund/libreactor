@@ -97,7 +97,7 @@ void notify_destruct(notify *notify)
     }
 }
 
-int notify_error(notify *notify)
+int notify_valid(notify *notify)
 {
-  return notify->error;
+  return notify->error == 0;
 }

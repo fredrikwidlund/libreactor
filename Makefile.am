@@ -5,10 +5,12 @@ AM_CFLAGS = -std=gnu11 -g -O3 -flto -I$(srcdir)/src
 AM_LDFLAGS = -static -pthread
 
 SOURCE_FILES = \
+src/stream/stream.c \
 src/notify/notify.c
 
 HEADER_FILES = \
 src/reactor.h \
+src/stream/stream.h \
 src/notify/notify.h
 
 lib_LTLIBRARIES = libreactor.la
@@ -25,7 +27,11 @@ pkgconfigdir = $(libdir)/pkgconfig
 pkgconfig_DATA = libreactor.pc
 
 bin_PROGRAMS = \
+example/stream \
 example/notify
+
+example_stream_LDFLAGS = -pthread
+example_stream_LDADD = libreactor.la -ldynamic
 
 example_notify_LDFLAGS = -pthread
 example_notify_LDADD = libreactor.la -ldynamic
@@ -57,6 +63,12 @@ test_notify_CFLAGS = $(CHECK_CFLAGS)
 test_notify_LDADD = $(CHECK_LDADD)
 test_notify_LDFLAGS = $(CHECK_LDFLAGS_EXTRA)
 test_notify_SOURCES = test/notify.c test/mock.c
+
+check_PROGRAMS += test/stream
+test_stream_CFLAGS = $(CHECK_CFLAGS)
+test_stream_LDADD = $(CHECK_LDADD)
+test_stream_LDFLAGS = $(CHECK_LDFLAGS_EXTRA)
+test_stream_SOURCES = test/stream.c test/mock.c
 
 dist_noinst_SCRIPTS = test/valgrind.sh test/coverage.sh Dockerfile
 

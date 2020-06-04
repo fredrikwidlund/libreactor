@@ -1,16 +1,15 @@
-#ifndef REACTOR_NOFITY_H_INCLUDED
-#define REACTOR_NOTIFY_H_INCLUDED
+#ifndef NOFITY_H_INCLUDED
+#define NOTIFY_H_INCLUDED
 
 enum
 {
-  NOTIFY_ERROR = 0,
-  NOTIFY_EVENT = 1
+  NOTIFY_ERROR,
+  NOTIFY_EVENT
 };
 
 typedef struct notify notify;
 struct notify
 {
-  int          state;
   core_handler user;
   int          fd;
   int          next;
@@ -20,6 +19,6 @@ struct notify
 void notify_construct(notify *, core_callback *, void *);
 void notify_destruct(notify *);
 void notify_watch(notify *, char *, uint32_t);
-int  notify_error(notify *);
+int  notify_valid(notify *);
 
 #endif /* NOTIFY_H_INCLUDED */
