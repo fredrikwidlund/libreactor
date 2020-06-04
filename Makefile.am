@@ -2,7 +2,7 @@ AUTOMAKE_OPTIONS = subdir-objects
 
 ACLOCAL_AMFLAGS = ${ACLOCAL_FLAGS} -I m4
 AM_CFLAGS = -std=gnu11 -g -O3 -flto -I$(srcdir)/src
-AM_LDFLAGS = -static -pthread
+AM_LDFLAGS = -static
 
 SOURCE_FILES = \
 src/stream/stream.c \
@@ -28,13 +28,12 @@ pkgconfig_DATA = libreactor.pc
 
 bin_PROGRAMS = \
 example/stream \
-example/notify
+example/notify \
+example/httpd_lowlevel
 
-example_stream_LDFLAGS = -pthread
 example_stream_LDADD = libreactor.la -ldynamic
-
-example_notify_LDFLAGS = -pthread
 example_notify_LDADD = libreactor.la -ldynamic
+example_httpd_lowlevel_LDADD = libreactor.la -ldynamic
 
 MAINTAINERCLEANFILES = aclocal.m4 config.h.in configure Makefile.in libreactor-?.?.?.tar.gz
 
