@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <fcntl.h>
+#include <sys/types.h>
 
 #include <dynamic.h>
 #include <reactor.h>

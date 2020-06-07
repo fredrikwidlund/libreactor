@@ -3,10 +3,11 @@
 #include <stdint.h>
 #include <string.h>
 #include <time.h>
+#include <sys/types.h>
 
 #include <dynamic.h>
-#include "picohttpparser/picohttpparser.h"
 
+#include "picohttpparser/picohttpparser.h"
 #include "reactor.h"
 
 segment http_date(int update)

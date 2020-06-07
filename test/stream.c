@@ -9,6 +9,7 @@
 #include <errno.h>
 #include <sys/inotify.h>
 #include <sys/socket.h>
+#include <sys/types.h>
 
 #include <cmocka.h>
 #include <dynamic.h>
