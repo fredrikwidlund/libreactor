@@ -15,16 +15,6 @@
 
 #include "reactor.h"
 
-/*
-static core_status callback_abort(core_event *event)
-{
-  notify *notify = event->state;
-
-  notify_destruct(notify);
-  return CORE_ABORT;
-}
-*/
-
 static int write_count = 0;
 static int read_size =  0;
 static int error_count = 0;
@@ -99,7 +89,7 @@ static core_status callback(core_event *event)
   return CORE_OK;
 }
 
-static void basic_pipe()
+static void basic_pipe(__attribute__ ((unused)) void **state)
 {
   char data[1024] = {0};
   int fd[2];
@@ -131,7 +121,7 @@ static void basic_pipe()
   core_destruct(NULL);
 }
 
-static void basic_socketpair()
+static void basic_socketpair(__attribute__ ((unused)) void **state)
 {
   char data[1024] = {0};
   int e, fd[2];
@@ -185,7 +175,7 @@ static void basic_socketpair()
   core_destruct(NULL);
 }
 
-static void errors()
+static void errors(__attribute__ ((unused)) void **state)
 {
   stream s;
 

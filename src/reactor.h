@@ -12,6 +12,7 @@ extern "C" {
 
 #include "notify/notify.h"
 #include "stream/stream.h"
+#include "http/http.h"
 
 #ifdef __cplusplus
 }

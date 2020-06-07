@@ -51,7 +51,7 @@ static core_status callback_ok(core_event *event)
   return CORE_OK;
 }
 
-static void basic()
+static void basic(__attribute__ ((unused)) void **state)
 {
   notify notify;
   char template[PATH_MAX] = "/tmp/notifyXXXXXX";

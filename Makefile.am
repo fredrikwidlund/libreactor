@@ -1,17 +1,19 @@
 AUTOMAKE_OPTIONS = subdir-objects
-
 ACLOCAL_AMFLAGS = ${ACLOCAL_FLAGS} -I m4
-AM_CFLAGS = -std=gnu11 -g -O3 -flto -I$(srcdir)/src
+AM_CFLAGS = -std=gnu2x -g -O3 -march=native -flto -I$(srcdir)/src
 AM_LDFLAGS = -static
 
 SOURCE_FILES = \
 src/stream/stream.c \
-src/notify/notify.c
+src/notify/notify.c \
+src/picohttpparser/picohttpparser.c \
+src/http/http.c
 
 HEADER_FILES = \
 src/reactor.h \
 src/stream/stream.h \
-src/notify/notify.h
+src/notify/notify.h \
+src/http/http.h
 
 lib_LTLIBRARIES = libreactor.la
 libreactor_la_SOURCES = $(SOURCE_FILES) $(HEADER_FILES)
@@ -29,11 +31,13 @@ pkgconfig_DATA = libreactor.pc
 bin_PROGRAMS = \
 example/stream \
 example/notify \
-example/httpd_lowlevel
+example/httpd_lowlevel \
+example/benchmark_http
 
 example_stream_LDADD = libreactor.la -ldynamic
 example_notify_LDADD = libreactor.la -ldynamic
 example_httpd_lowlevel_LDADD = libreactor.la -ldynamic
+example_benchmark_http_LDADD = libreactor.la -ldynamic
 
 MAINTAINERCLEANFILES = aclocal.m4 config.h.in configure Makefile.in libreactor-?.?.?.tar.gz
 
@@ -48,7 +52,7 @@ check_LIBRARIES = libreactor_test.a
 libreactor_test_a_CFLAGS = $(CHECK_CFLAGS)
 libreactor_test_a_SOURCES = $(SOURCE_FILES) $(HEADER_FILES)
 
-CHECK_CFLAGS = -std=gnu11 -O0 -g -ftest-coverage -fprofile-arcs -I$(srcdir)/src -DGCOV_BUILD
+CHECK_CFLAGS = -std=gnu2x -O0 -g -ftest-coverage -fprofile-arcs -I$(srcdir)/src -DGCOV_BUILD
 CHECK_LDADD = -L. libreactor_test.a -lcmocka -ldynamic
 CHECK_LDFLAGS_EXTRA = -pthread \
 -Wl,--wrap=abort \

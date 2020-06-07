@@ -8,16 +8,15 @@
 
 void process(stream *stream)
 {
-  void *base;
-  size_t size;
+  segment line;
 
   while (1)
     {
-      stream_readline(stream, &base, &size);
-      if (!size)
-        return;
-      (void) printf("%.*s", (int) size, (char *) base);
-      stream_consume(stream, size);
+      line = stream_read_line(stream);
+      if (!line.size)
+        break;
+      (void) printf("%.*s", (int) line.size, (char *) line.base);
+      stream_consume(stream, line.size);
     }
 }
 

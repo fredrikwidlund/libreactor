@@ -15,28 +15,54 @@
 #include <dynamic.h>
 #include <reactor.h>
 
-static char *response =
-  "HTTP/1.1 200 OK\r\n"
-  "Date: Thu, 04 Jun 2020 20:38:15 GMT\r\n"
-  "Server: libreactor\r\n"
-  "Content-Length: 13\r\n"
-  "Content-Type: test/plain\r\n"
-  "\r\n"
-  "Hello, World!";
+static void plaintext(stream *client)
+{
+  http_response response;
+  http_response_ok(&response, segment_string("text/plain"), segment_string("Hello, World!"));
+  http_response_write(&response, stream_allocate(client, http_response_size(&response)));
+}
+
+static void not_found(stream *client)
+{
+  http_response response;
+  http_response_not_found(&response);
+  http_response_write(&response, stream_allocate(client, http_response_size(&response)));
+}
 
 static core_status client_event(core_event *event)
 {
   stream *client = (stream *) event->state;
-  void *base;
-  size_t size;
+  http_request request;
+  segment s;
+  size_t offset = 0;
+  ssize_t n;
 
   switch (event->type)
     {
     case STREAM_READ:
-      stream_read(client, &base, &size);
-      stream_write(client, response, strlen(response));
+      s = stream_read(client);
+      do
+        {
+          n = http_request_read(&request, segment_offset(s, offset));
+          if (n <= 0)
+            break;
+          if (segment_equal(request.method, segment_string("GET")) && segment_equal(request.target, segment_string("/plaintext")))
+            plaintext(client);
+          else
+            not_found(client);
+          offset += n;
+        }
+      while (offset < s.size);
+
+      if (n == -1)
+        {
+          stream_destruct(client);
+          free(client);
+          return CORE_ABORT;
+       }
+
       stream_flush(client);
-      stream_consume(client, size);
+      stream_consume(client, offset);
       return CORE_OK;
     case STREAM_FLUSH:
       return CORE_OK;
