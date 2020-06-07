@@ -47,17 +47,16 @@ static void stream_receive(stream *stream)
   size_t offset = buffer_size(b), size = 0;
   ssize_t n;
 
-  while (1)
+  do
     {
       buffer_reserve(b, offset + size + STREAM_BLOCK_SIZE);
       if (stream_is_socket(stream))
         n = recv(stream->fd, (char *) buffer_data(b) + offset + size, STREAM_BLOCK_SIZE, 0);
       else
         n = read(stream->fd, (char *) buffer_data(b) + offset + size, STREAM_BLOCK_SIZE);
-      if (n <= 0)
-        break;
-      size += n;
+      size += n > 0 ? n : 0;
     }
+  while (n == STREAM_BLOCK_SIZE);
 
   if (n == 0)
     stream->flags &= ~STREAM_OPEN;
