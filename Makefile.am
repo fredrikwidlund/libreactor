@@ -4,16 +4,15 @@ AM_CFLAGS = -std=gnu2x -g -O3 -march=native -flto -I$(srcdir)/src
 AM_LDFLAGS = -static
 
 SOURCE_FILES = \
-src/stream/stream.c \
-src/notify/notify.c \
 src/picohttpparser/picohttpparser.c \
-src/http/http.c
+src/reactor/stream.c \
+src/reactor/notify.c \
+src/reactor/http.c
 
 HEADER_FILES = \
-src/reactor.h \
-src/stream/stream.h \
-src/notify/notify.h \
-src/http/http.h
+src/reactor/stream.h \
+src/reactor/notify.h \
+src/reactor/http.h
 
 lib_LTLIBRARIES = libreactor.la
 libreactor_la_SOURCES = $(SOURCE_FILES) $(HEADER_FILES)

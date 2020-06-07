@@ -10,9 +10,9 @@
 extern "C" {
 #endif
 
-#include "notify/notify.h"
-#include "stream/stream.h"
-#include "http/http.h"
+#include "reactor/notify.h"
+#include "reactor/stream.h"
+#include "reactor/http.h"
 
 #ifdef __cplusplus
 }
