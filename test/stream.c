@@ -23,16 +23,15 @@ static int error_count = 0;
 static core_status callback_readline(core_event *event)
 {
   stream *stream = event->state;
-  char *line = "line\n";
-  void *base;
-  size_t size;
+  segment s;
 
   switch (event->type)
     {
     case STREAM_FLUSH:
       if (write_count)
         {
-          stream_write(stream, line, strlen(line));
+          s = stream_allocate(stream, 5);
+          memcpy(s.base, "line\n", 5);
           stream_flush(stream);
           write_count --;
         }
@@ -40,9 +39,8 @@ static core_status callback_readline(core_event *event)
         stream_destruct(stream);
       return CORE_OK;
     case STREAM_READ:
-      stream_readline(stream, &base, &size);
-      assert_int_equal(size, strlen(line));
-      assert_true(memcmp(base, line, size) == 0);
+      s = stream_read_line(stream);
+      assert_true(segment_equal(s, segment_string("line\n")));
       stream_destruct(stream);
       return CORE_ABORT;
     default:
@@ -55,15 +53,14 @@ static core_status callback(core_event *event)
 {
   stream *stream = event->state;
   char data[1048576] = {0};
-  void *base;
-  size_t size;
+  segment s;
 
   switch(event->type)
     {
     case STREAM_FLUSH:
       if (write_count)
         {
-          stream_write(stream, data, sizeof data);
+          stream_write(stream, segment_data(data, sizeof data));
           stream_flush(stream);
           write_count --;
         }
@@ -71,14 +68,11 @@ static core_status callback(core_event *event)
         stream_destruct(stream);
       return CORE_OK;
     case STREAM_READ:
-      stream_read(stream, &base, &size);
-      read_size += size;
-      stream_consume(stream, size);
+      s = stream_read(stream);
+      read_size += s.size;
+      stream_consume(stream, s.size);
       return CORE_OK;
     case STREAM_CLOSE:
-      stream_read(stream, &base, &size);
-      read_size += size;
-      stream_consume(stream, size);
       stream_destruct(stream);
       return CORE_ABORT;
     case STREAM_ERROR:
@@ -127,8 +121,7 @@ static void basic_socketpair(__attribute__ ((unused)) void **state)
   char data[1024] = {0};
   int e, fd[2];
   stream in, out;
-  void *base;
-  size_t size;
+  segment s;
 
   core_construct(NULL);
 
@@ -165,8 +158,8 @@ static void basic_socketpair(__attribute__ ((unused)) void **state)
   stream_construct(&in, callback_readline, &in);
   stream_construct(&out, callback_readline, &out);
   stream_open(&in, fd[0]);
-  stream_readline(&in, &base, &size);
-  assert_int_equal(size, 0);
+  s = stream_read_line(&in);
+  assert_int_equal(s.size, 0);
   stream_open(&out, fd[1]);
   write_count = 1;
   stream_notify(&out);
@@ -199,7 +192,7 @@ static void errors(__attribute__ ((unused)) void **state)
 
   // write on closed
   stream_construct(&s, callback, &s);
-  stream_write(&s, "" , 0);
+  stream_write(&s, segment_empty());
   stream_notify(&s);
   stream_flush(&s);
   stream_destruct(&s);

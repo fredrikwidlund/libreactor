@@ -41,7 +41,7 @@ static void stream_send(stream *stream)
   buffer_erase(b, 0, offset);
 }
 
-static void stream_receive(stream *stream)
+static size_t stream_receive(stream *stream)
 {
   buffer *b = &stream->input;
   size_t offset = buffer_size(b), size = 0;
@@ -61,24 +61,37 @@ static void stream_receive(stream *stream)
   if (n == 0)
     stream->flags &= ~STREAM_OPEN;
   b->size += size;
+  return size;
 }
 
 static core_status stream_callback(core_event *event)
 {
   stream *stream = event->state;
+  core_status e;
+  size_t size;
 
-  //printf("ev %08lx\n", event->data);
-  switch (event->data & (EPOLLIN | EPOLLOUT))
+  // unlikely
+  if (event->data & EPOLLOUT)
     {
-    case EPOLLIN:
-      stream_receive(stream);
-      return core_dispatch(&stream->user, stream_is_open(stream) ? STREAM_READ : STREAM_CLOSE, 0);
-    case EPOLLOUT:
       stream_flush(stream);
       return buffer_size(&stream->output) ? CORE_OK : core_dispatch(&stream->user, STREAM_FLUSH, 0);
-    default:
-      return core_dispatch(&stream->user, STREAM_CLOSE, 0);
     }
+
+  // likely
+  if (event->data & EPOLLIN)
+    {
+      size = stream_receive(stream);
+      if (size)
+        {
+          e = core_dispatch(&stream->user, STREAM_READ, 0);
+          if (e != CORE_OK)
+            return e;
+        }
+      if (stream_is_open(stream) && event->data == EPOLLIN)
+        return CORE_OK;
+    }
+
+  return core_dispatch(&stream->user, STREAM_CLOSE, 0);
 }
 
 static void stream_events(stream *stream, int events)

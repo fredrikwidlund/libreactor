@@ -72,6 +72,12 @@ test_stream_LDADD = $(CHECK_LDADD)
 test_stream_LDFLAGS = $(CHECK_LDFLAGS_EXTRA)
 test_stream_SOURCES = test/stream.c test/mock.c
 
+check_PROGRAMS += test/http
+test_http_CFLAGS = $(CHECK_CFLAGS)
+test_http_LDADD = $(CHECK_LDADD)
+test_http_LDFLAGS = $(CHECK_LDFLAGS_EXTRA)
+test_http_SOURCES = test/http.c test/mock.c
+
 dist_noinst_SCRIPTS = test/valgrind.sh test/coverage.sh Dockerfile
 
 TESTS = $(check_PROGRAMS) test/valgrind.sh test/coverage.sh

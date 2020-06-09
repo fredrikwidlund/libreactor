@@ -3,7 +3,7 @@
 exit 0
 
 if command -v valgrind; then
-    for file in notify stream
+    for file in notify stream http
     do
         echo [$file]
         if ! valgrind --track-fds=yes --error-exitcode=1 --read-var-info=yes --leak-check=full --show-leak-kinds=all test/$file; then
