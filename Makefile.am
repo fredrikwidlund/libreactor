@@ -73,7 +73,7 @@ test_stream_LDFLAGS = $(CHECK_LDFLAGS_EXTRA)
 test_stream_SOURCES = test/stream.c test/mock.c
 
 check_PROGRAMS += test/http
-test_http_CFLAGS = $(CHECK_CFLAGS)
+test_http_CFLAGS = $(CHECK_CFLAGS) -DSRCDIR=\"$(srcdir)/\"
 test_http_LDADD = $(CHECK_LDADD)
 test_http_LDFLAGS = $(CHECK_LDFLAGS_EXTRA)
 test_http_SOURCES = test/http.c test/mock.c
