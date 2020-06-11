@@ -5,11 +5,13 @@ AM_LDFLAGS = -static
 
 SOURCE_FILES = \
 src/picohttpparser/picohttpparser.c \
+src/reactor/timer.c \
 src/reactor/stream.c \
 src/reactor/notify.c \
 src/reactor/http.c
 
 HEADER_FILES = \
+src/reactor/timer.h \
 src/reactor/stream.h \
 src/reactor/notify.h \
 src/reactor/http.h
@@ -28,11 +30,13 @@ pkgconfigdir = $(libdir)/pkgconfig
 pkgconfig_DATA = libreactor.pc
 
 bin_PROGRAMS = \
+example/timer \
 example/stream \
 example/notify \
 example/httpd_lowlevel \
 example/benchmark_http
 
+example_timer_LDADD = libreactor.la -ldynamic
 example_stream_LDADD = libreactor.la -ldynamic
 example_notify_LDADD = libreactor.la -ldynamic
 example_httpd_lowlevel_LDADD = libreactor.la -ldynamic

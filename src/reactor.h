@@ -10,6 +10,7 @@
 extern "C" {
 #endif
 
+#include "reactor/timer.h"
 #include "reactor/notify.h"
 #include "reactor/stream.h"
 #include "reactor/http.h"
