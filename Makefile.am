@@ -34,12 +34,14 @@ example/timer \
 example/stream \
 example/notify \
 example/httpd_lowlevel \
+example/httpd \
 example/benchmark_http
 
 example_timer_LDADD = libreactor.la -ldynamic
 example_stream_LDADD = libreactor.la -ldynamic
 example_notify_LDADD = libreactor.la -ldynamic
 example_httpd_lowlevel_LDADD = libreactor.la -ldynamic
+example_httpd_LDADD = libreactor.la -ldynamic
 example_benchmark_http_LDADD = libreactor.la -ldynamic
 
 MAINTAINERCLEANFILES = aclocal.m4 config.h.in configure Makefile.in libreactor-?.?.?.tar.gz

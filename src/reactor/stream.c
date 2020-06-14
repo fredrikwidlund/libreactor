@@ -33,7 +33,10 @@ static void stream_send(stream *stream)
 
   while (size - offset)
     {
-      n = send(stream->fd, (char *) buffer_data(b) + offset, size - offset, 0);
+      if (stream_is_socket(stream))
+        n = send(stream->fd, (char *) buffer_data(b) + offset, size - offset, 0);
+      else
+        n = write(stream->fd, (char *) buffer_data(b) + offset, size - offset);
       if (n == -1)
         break;
       offset += n;
@@ -70,24 +73,22 @@ static core_status stream_callback(core_event *event)
   core_status e;
   size_t size;
 
-  // unlikely
-  if (event->data & EPOLLOUT)
+  if (dynamic_unlikely(event->data & EPOLLOUT))
     {
       stream_flush(stream);
       return buffer_size(&stream->output) ? CORE_OK : core_dispatch(&stream->user, STREAM_FLUSH, 0);
     }
 
-  // likely
-  if (event->data & EPOLLIN)
+  if (dynamic_likely(event->data & EPOLLIN))
     {
       size = stream_receive(stream);
-      if (size)
+      if (dynamic_likely(size))
         {
           e = core_dispatch(&stream->user, STREAM_READ, 0);
-          if (e != CORE_OK)
+          if (dynamic_unlikely(e != CORE_OK))
             return e;
         }
-      if (stream_is_open(stream) && event->data == EPOLLIN)
+      if (dynamic_likely(stream_is_open(stream) && event->data == EPOLLIN))
         return CORE_OK;
     }
 
