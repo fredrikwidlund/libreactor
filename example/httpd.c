@@ -31,14 +31,6 @@ enum
 typedef struct server         server;
 typedef struct server_context server_context;
 typedef struct server_session server_session;
-typedef struct server_stats   server_stats;
-
-struct server_stats
-{
-  uint64_t count;
-  uint64_t total;
-  uint64_t start;
-};
 
 struct server
 {
@@ -46,7 +38,6 @@ struct server
   timer           timer;
   int             fd;
   list            sessions;
-  server_stats    stats;
 };
 
 struct server_context
@@ -62,13 +53,6 @@ struct server_session
   server         *server;
 };
 
-static void server_ok_slow(server_context *context, segment type, segment data)
-{
-  http_response response;
-
-  http_response_ok(&response, type, data);
-  http_response_write(&response, stream_allocate(&context->session->stream, http_response_size(&response)));
-}
 
 static void server_ok_fast(server_context *context, segment type, segment data)
 {
@@ -85,16 +69,19 @@ static void server_ok_fast(server_context *context, segment type, segment data)
   int count = sizeof s / sizeof s[0];
 
   n = writev(context->session->stream.fd, (const struct iovec *) s, count);
-  if (n != 126)
-    abort();
+  if (n != 135)
+    {
+      printf("%ld\n", n);
+      abort();
+    }
 }
 
 void server_ok(server_context *context, segment type, segment data)
 {
-  if (dynamic_likely(context->flags & SERVER_DIRECT && buffer_size(&context->session->stream.output) == 0))
-    server_ok_fast(context, type, data);
-  else
-    server_ok_slow(context, type, data);
+  http_response response;
+
+  http_response_ok(&response, type, data);
+  http_response_write(&response, stream_allocate(&context->session->stream, http_response_size(&response)));
 }
 
 static core_status server_session_read(server_session *session)
@@ -104,9 +91,6 @@ static core_status server_session_read(server_session *session)
   size_t offset;
   ssize_t n;
   core_status e;
-  uint64_t t;
-
-  t = utility_tsc();
 
   context.flags = 0;
   context.session = session;
@@ -124,12 +108,8 @@ static core_status server_session_read(server_session *session)
         return e;
     }
 
-  session->server->stats.total += utility_tsc() - t;
-  session->server->stats.count ++;
-
   stream_flush(&session->stream);
   stream_consume(&session->stream, offset);
-
   return CORE_OK;
 }
 
@@ -150,12 +130,8 @@ static core_status server_session_handler(core_event *event)
 
 static core_status server_timer_handler(core_event *event)
 {
-  server *server = (struct server *) event->state;
-
-  fprintf(stderr, "%f\n", (double) server->stats.total / (double) server->stats.count);
-  server->stats = (server_stats) {0};
+  (void) event;
   http_date(1);
-
   return CORE_OK;
 }
 
@@ -168,14 +144,18 @@ static core_status server_fd_handler(core_event *event)
   if (event->data != EPOLLIN)
     err(1, "server");
 
-  fd = accept4(server->fd, NULL, NULL, SOCK_NONBLOCK | SOCK_CLOEXEC);
-  if (fd == -1)
-    err(1, "accept4");
+  while (1)
+    {
+      fd = accept4(server->fd, NULL, NULL, SOCK_NONBLOCK | SOCK_CLOEXEC);
+      if (fd == -1)
+        break;
 
-  session = list_push_back(&server->sessions, NULL, sizeof *session);
-  stream_construct(&session->stream, server_session_handler, session);
-  session->server = server;
-  stream_open(&session->stream, fd);
+      session = list_push_back(&server->sessions, NULL, sizeof *session);
+      stream_construct(&session->stream, server_session_handler, session);
+      session->server = server;
+      stream_open(&session->stream, fd);
+    }
+
   return CORE_OK;
 }
 
@@ -191,6 +171,7 @@ void server_close(server *server)
   timer_clear(&server->timer);
   if (server->fd >= 0)
     {
+      core_delete(NULL, server->fd);
       (void) close(server->fd);
       server->fd = -1;
     }
@@ -198,12 +179,16 @@ void server_close(server *server)
 
 void server_destruct(server *server)
 {
+  server_session *session;
+
   server_close(server);
+  list_foreach(&server->sessions, session)
+    stream_destruct(&session->stream);
+  list_destruct(&server->sessions, NULL);
   timer_destruct(&server->timer);
-  /* close sessions */
 }
 
-void server_bind(server *server, uint32_t ip, uint16_t port)
+void server_open(server *server, uint32_t ip, uint16_t port)
 {
   struct sockaddr_in sin = {.sin_family = AF_INET, .sin_addr.s_addr = htonl(ip), .sin_port = htons(port)};
   int e, fd;
@@ -227,17 +212,16 @@ void server_bind(server *server, uint32_t ip, uint16_t port)
 
 static core_status handler(core_event *event)
 {
-  server *server = event->state;
   server_context *context = (server_context *) event->data;
 
-  if (dynamic_likely(event->type == SERVER_REQUEST))
+  if (segment_equal(context->request.method, segment_string("QUIT")))
     {
-      server_ok(context, segment_string("text/plain"), segment_string("hello"));
-      return CORE_OK;
+      server_destruct(context->session->server);
+      return CORE_ABORT;
     }
 
-  server_destruct(server);
-  return CORE_ABORT;
+  server_ok(context, segment_string("text/plain"), segment_string("Hello, World!"));
+  return CORE_OK;
 }
 
 int main()
@@ -247,7 +231,7 @@ int main()
   signal(SIGPIPE, SIG_IGN);
   core_construct(NULL);
   server_construct(&s, handler, &s);
-  server_bind(&s, 0, 8080);
+  server_open(&s, 0, 8080);
   core_loop(NULL);
   core_destruct(NULL);
 }

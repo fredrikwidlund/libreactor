@@ -167,6 +167,13 @@ ssize_t http_request_read(http_request *request, segment data)
     return n == -2 ? 0 : -1;
   header_size = n;
 
+  if (segment_equal_case(http_headers_lookup(&request->headers, segment_string("Transfer-Encoding")),
+                         segment_string("Chunked")))
+    {
+      body_size = http_dechunk(segment_offset(data, header_size), &request->body);
+      return body_size ? header_size + body_size : 0;
+    }
+
   value = http_headers_lookup(&request->headers, segment_string("Content-Length"));
   if (value.size)
     {
@@ -175,14 +182,7 @@ ssize_t http_request_read(http_request *request, segment data)
       return header_size + body_size <= data.size ? header_size + body_size : 0;
     }
 
-  if (segment_equal_case(http_headers_lookup(&request->headers, segment_string("Transfer-Encoding")),
-                         segment_string("Chunked")))
-    {
-      body_size = http_dechunk(segment_offset(data, header_size), &request->body);
-      return body_size ? header_size + body_size : 0;
-    }
-
-  return -1;
+  return header_size;
 }
 
 /*****************/
@@ -205,19 +205,19 @@ ssize_t http_response_read(http_response *response, segment data)
     return n == -2 ? 0 : -1;
   header_size = n;
 
+  if (segment_equal_case(http_headers_lookup(&response->headers, segment_string("Transfer-Encoding")),
+                         segment_string("Chunked")))
+    {
+      body_size = http_dechunk(segment_offset(data, header_size), &response->body);
+      return body_size ? header_size + body_size : 0;
+    }
+
   value = http_headers_lookup(&response->headers, segment_string("Content-Length"));
   if (value.size)
     {
       body_size = strtoull(value.base, NULL, 10);
       response->body = segment_data((char *) data.base + header_size, body_size);
       return header_size + body_size <= data.size ? header_size + body_size : 0;
-    }
-
-  if (segment_equal_case(http_headers_lookup(&response->headers, segment_string("Transfer-Encoding")),
-                         segment_string("Chunked")))
-    {
-      body_size = http_dechunk(segment_offset(data, header_size), &response->body);
-      return body_size ? header_size + body_size : 0;
     }
 
   return -1;
