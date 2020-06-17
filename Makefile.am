@@ -1,7 +1,6 @@
 AUTOMAKE_OPTIONS = subdir-objects
 ACLOCAL_AMFLAGS = ${ACLOCAL_FLAGS} -I m4
-#AM_CFLAGS = -std=gnu2x -g -O3 -march=native -flto -I$(srcdir)/src
-AM_CFLAGS = -std=gnu2x -g -O3 -flto -I$(srcdir)/src
+AM_CFLAGS = -std=gnu11 -g -O3 -march=native -flto -I$(srcdir)/src
 AM_LDFLAGS = -static
 
 SOURCE_FILES = \
@@ -9,13 +8,15 @@ src/picohttpparser/picohttpparser.c \
 src/reactor/timer.c \
 src/reactor/stream.c \
 src/reactor/notify.c \
-src/reactor/http.c
+src/reactor/http.c \
+src/reactor/server.c
 
 HEADER_FILES = \
 src/reactor/timer.h \
 src/reactor/stream.h \
 src/reactor/notify.h \
-src/reactor/http.h
+src/reactor/http.h \
+src/reactor/server.h
 
 lib_LTLIBRARIES = libreactor.la
 libreactor_la_SOURCES = $(SOURCE_FILES) $(HEADER_FILES)
@@ -35,14 +36,14 @@ example/timer \
 example/stream \
 example/notify \
 example/httpd_lowlevel \
-example/httpd \
+example/server \
 example/benchmark_http
 
 example_timer_LDADD = libreactor.la -ldynamic
 example_stream_LDADD = libreactor.la -ldynamic
 example_notify_LDADD = libreactor.la -ldynamic
 example_httpd_lowlevel_LDADD = libreactor.la -ldynamic
-example_httpd_LDADD = libreactor.la -ldynamic
+example_server_LDADD = libreactor.la -ldynamic
 example_benchmark_http_LDADD = libreactor.la -ldynamic
 
 MAINTAINERCLEANFILES = aclocal.m4 config.h.in configure Makefile.in libreactor-?.?.?.tar.gz

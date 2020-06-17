@@ -14,6 +14,7 @@ extern "C" {
 #include "reactor/notify.h"
 #include "reactor/stream.h"
 #include "reactor/http.h"
+#include "reactor/server.h"
 
 #ifdef __cplusplus
 }
