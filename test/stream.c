@@ -88,7 +88,7 @@ static void basic_pipe(__attribute__ ((unused)) void **state)
 {
   char data[1024] = {0};
   int fd[2];
-  stream stream;
+  stream stream, out;
 
   core_construct(NULL);
 
@@ -107,8 +107,11 @@ static void basic_pipe(__attribute__ ((unused)) void **state)
   fcntl(fd[0], F_SETFL, O_NONBLOCK);
   stream_construct(&stream, callback, &stream);
   stream_open(&stream, fd[0]);
-  write(fd[1], data, sizeof data);
-  close(fd[1]);
+  stream_construct(&out, callback, &out);
+  stream_open(&out, fd[1]);
+  stream_write(&out, segment_data(data, sizeof data));
+  stream_flush(&out);
+  stream_destruct(&out);
   assert_true(stream_is_open(&stream));
   core_loop(NULL);
   assert_false(stream_is_open(&stream));
