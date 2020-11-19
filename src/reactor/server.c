@@ -139,8 +139,19 @@ static int server_fd_bind(server *server, uint32_t ip, uint16_t port)
 void server_construct(server *server, core_callback *callback, void *state)
 {
   *server = (struct server) {.user = {.callback = callback, .state = state}, .fd = -1};
+  server->options = SERVER_OPTION_DEFAULTS;
   timer_construct(&server->timer, server_timer_handler, server);
   list_construct(&server->sessions);
+}
+
+void server_option_set(server *server, server_options options)
+{
+  server->options |= options;
+}
+
+void server_option_clear(server *server, server_options options)
+{
+  server->options &= ~options;
 }
 
 void server_open(server *server, uint32_t ip, uint16_t port)
