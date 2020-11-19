@@ -7,6 +7,7 @@
 #include <limits.h>
 #include <sys/epoll.h>
 #include <netinet/in.h>
+#include <linux/filter.h>
 
 #include <dynamic.h>
 #include <reactor.h>
@@ -116,6 +117,9 @@ static core_status server_fd_handler(core_event *event)
 
 static int server_fd_bind(server *server, uint32_t ip, uint16_t port)
 {
+  struct sock_filter code[] = {{ BPF_LD  | BPF_W | BPF_ABS, 0, 0, SKF_AD_OFF + SKF_AD_CPU },
+                               { BPF_RET | BPF_A, 0, 0, 0 }};
+  struct sock_fprog prog = { .len = sizeof(code)/sizeof(code[0]), .filter = code };
   struct sockaddr_in sin = {0};
   int e;
 
@@ -133,7 +137,16 @@ static int server_fd_bind(server *server, uint32_t ip, uint16_t port)
   if (e == -1)
     return -1;
 
-  return listen(server->fd, INT_MAX);
+  if (server->options & SERVER_OPTION_BPF)
+    {
+      e = listen(server->fd, INT_MAX);
+      if (e == -1)
+        return -1;
+
+      return setsockopt(server->fd, SOL_SOCKET, SO_ATTACH_REUSEPORT_CBPF, &prog, sizeof(prog));
+    }
+  else
+    return listen(server->fd, INT_MAX);
 }
 
 void server_construct(server *server, core_callback *callback, void *state)
