@@ -16,6 +16,8 @@ The following will build a portable static web server ``hello`` (~60kB)
 
 .. code-block:: shell
 
+    git clone -b release-2.0 https://github.com/fredrikwidlund/libreactor.git
+    cd libreactor/
     ./autogen.sh
     ./configure
     make hello
