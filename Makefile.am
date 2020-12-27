@@ -12,6 +12,7 @@ src/reactor/http.c \
 src/reactor/server.c
 
 HEADER_FILES = \
+src/picohttpparser/picohttpparser.h \
 src/reactor/timer.h \
 src/reactor/stream.h \
 src/reactor/notify.h \
