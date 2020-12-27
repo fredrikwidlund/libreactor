@@ -17,7 +17,7 @@
 #include "reactor.h"
 
 static int write_count = 0;
-static int read_size =  0;
+static int read_size = 0;
 static int error_count = 0;
 
 static core_status callback_readline(core_event *event)
@@ -26,27 +26,27 @@ static core_status callback_readline(core_event *event)
   segment s;
 
   switch (event->type)
+  {
+  case STREAM_FLUSH:
+    if (write_count)
     {
-    case STREAM_FLUSH:
-      if (write_count)
-        {
-          s = stream_allocate(stream, 5);
-          memcpy(s.base, "line\n", 5);
-          stream_flush(stream);
-          write_count --;
-        }
-      else
-        stream_destruct(stream);
-      return CORE_OK;
-    case STREAM_READ:
-      s = stream_read_line(stream);
-      assert_true(segment_equal(s, segment_string("line\n")));
-      stream_destruct(stream);
-      return CORE_ABORT;
-    default:
-      stream_destruct(stream);
-      return CORE_ABORT;
+      s = stream_allocate(stream, 5);
+      memcpy(s.base, "line\n", 5);
+      stream_flush(stream);
+      write_count--;
     }
+    else
+      stream_destruct(stream);
+    return CORE_OK;
+  case STREAM_READ:
+    s = stream_read_line(stream);
+    assert_true(segment_equal(s, segment_string("line\n")));
+    stream_destruct(stream);
+    return CORE_ABORT;
+  default:
+    stream_destruct(stream);
+    return CORE_ABORT;
+  }
 }
 
 static core_status callback(core_event *event)
@@ -55,36 +55,36 @@ static core_status callback(core_event *event)
   char data[1048576] = {0};
   segment s;
 
-  switch(event->type)
+  switch (event->type)
+  {
+  case STREAM_FLUSH:
+    if (write_count)
     {
-    case STREAM_FLUSH:
-      if (write_count)
-        {
-          stream_write(stream, segment_data(data, sizeof data));
-          stream_flush(stream);
-          write_count --;
-        }
-      else
-        stream_destruct(stream);
-      return CORE_OK;
-    case STREAM_READ:
-      s = stream_read(stream);
-      read_size += s.size;
-      stream_consume(stream, s.size);
-      return CORE_OK;
-    case STREAM_CLOSE:
-      stream_destruct(stream);
-      return CORE_ABORT;
-    case STREAM_ERROR:
-      error_count ++;
-      stream_destruct(stream);
-      return CORE_ABORT;
+      stream_write(stream, segment_data(data, sizeof data));
+      stream_flush(stream);
+      write_count--;
     }
+    else
+      stream_destruct(stream);
+    return CORE_OK;
+  case STREAM_READ:
+    s = stream_read(stream);
+    read_size += s.size;
+    stream_consume(stream, s.size);
+    return CORE_OK;
+  case STREAM_CLOSE:
+    stream_destruct(stream);
+    return CORE_ABORT;
+  case STREAM_ERROR:
+    error_count++;
+    stream_destruct(stream);
+    return CORE_ABORT;
+  }
 
   return CORE_OK;
 }
 
-static void basic_pipe(__attribute__ ((unused)) void **state)
+static void basic_pipe(__attribute__((unused)) void **state)
 {
   char data[1024] = {0};
   int fd[2];
@@ -119,7 +119,7 @@ static void basic_pipe(__attribute__ ((unused)) void **state)
   core_destruct(NULL);
 }
 
-static void basic_socketpair(__attribute__ ((unused)) void **state)
+static void basic_socketpair(__attribute__((unused)) void **state)
 {
   char data[1024] = {0};
   int e, fd[2];
@@ -172,7 +172,7 @@ static void basic_socketpair(__attribute__ ((unused)) void **state)
   core_destruct(NULL);
 }
 
-static void errors(__attribute__ ((unused)) void **state)
+static void errors(__attribute__((unused)) void **state)
 {
   stream s;
 
@@ -212,11 +212,10 @@ static void errors(__attribute__ ((unused)) void **state)
 int main()
 {
   const struct CMUnitTest tests[] =
-    {
-     cmocka_unit_test(basic_pipe),
-     cmocka_unit_test(basic_socketpair),
-     cmocka_unit_test(errors)
-    };
+      {
+          cmocka_unit_test(basic_pipe),
+          cmocka_unit_test(basic_socketpair),
+          cmocka_unit_test(errors)};
 
   return cmocka_run_group_tests(tests, NULL, NULL);
 }

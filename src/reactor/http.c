@@ -33,23 +33,21 @@ static size_t http_dechunk(segment data, segment *dechunked)
 
   offset = 0;
   do
-    {
-      n = http_chunk(segment_offset(data, offset), &chunk);
-      if (dynamic_unlikely(n == 0))
-        return 0;
-      offset += n;
-    }
-  while (chunk.size);
+  {
+    n = http_chunk(segment_offset(data, offset), &chunk);
+    if (dynamic_unlikely(n == 0))
+      return 0;
+    offset += n;
+  } while (chunk.size);
 
   offset = 0;
   do
-    {
-      n = http_chunk(segment_offset(data, offset), &chunk);
-      offset += n;
-      memmove((char *) dechunked->base + dechunked->size, chunk.base, chunk.size);
-      dechunked->size += chunk.size;
-    }
-  while (chunk.size);
+  {
+    n = http_chunk(segment_offset(data, offset), &chunk);
+    offset += n;
+    memmove((char *) dechunked->base + dechunked->size, chunk.base, chunk.size);
+    dechunked->size += chunk.size;
+  } while (chunk.size);
 
   return offset;
 }
@@ -67,13 +65,13 @@ segment http_date(int update)
   static __thread char date[30] = "Thu, 01 Jan 1970 00:00:00 GMT";
 
   if (dynamic_unlikely(update))
-    {
-      (void) time(&t);
-      (void) gmtime_r(&t, &tm);
-      (void) strftime(date, 30, "---, %d --- %Y %H:%M:%S GMT", &tm);
-      memcpy(date, days[tm.tm_wday], 3);
-      memcpy(date + 8, months[tm.tm_mon], 3);
-    }
+  {
+    (void) time(&t);
+    (void) gmtime_r(&t, &tm);
+    (void) strftime(date, 30, "---, %d --- %Y %H:%M:%S GMT", &tm);
+    memcpy(date, days[tm.tm_wday], 3);
+    memcpy(date + 8, months[tm.tm_mon], 3);
+  }
 
   return (segment) {date, 29};
 }
@@ -95,17 +93,17 @@ size_t http_headers_count(http_headers *headers)
 void http_headers_add(http_headers *headers, segment name, segment value)
 {
   if (dynamic_unlikely(headers->count < HTTP_MAX_HEADERS))
-    {
-      headers->header[headers->count] = (http_header) {name, value};
-      headers->count ++;
-    }
+  {
+    headers->header[headers->count] = (http_header) {name, value};
+    headers->count++;
+  }
 }
 
 segment http_headers_lookup(http_headers *headers, segment name)
 {
   size_t i;
 
-  for (i = 0; i < headers->count; i ++)
+  for (i = 0; i < headers->count; i++)
     if (segment_equal_case(headers->header[i].name, name))
       return headers->header[i].value;
   return segment_empty();
@@ -116,7 +114,7 @@ static size_t http_headers_size(http_headers *headers)
   size_t size, i;
 
   size = headers->count * 4;
-  for (i = 0; i < headers->count; i ++)
+  for (i = 0; i < headers->count; i++)
     size += headers->header[i].name.size + headers->header[i].value.size;
 
   return size;
@@ -127,19 +125,19 @@ static char *http_headers_write(http_headers *headers, char *base)
   http_header *h = headers->header;
   size_t i = 0, l1, l2;
 
-  for (i = 0; i < headers->count; i ++)
-    {
-      l1 = h[i].name.size;
-      l2 = h[i].value.size;
-      memcpy(base, h[i].name.base, l1);
-      base += l1;
-      memcpy(base, ": ", 2);
-      base += 2;
-      memcpy(base, h[i].value.base, l2);
-      base += l2;
-      memcpy(base, "\r\n", 2);
-      base += 2;
-    }
+  for (i = 0; i < headers->count; i++)
+  {
+    l1 = h[i].name.size;
+    l2 = h[i].value.size;
+    memcpy(base, h[i].name.base, l1);
+    base += l1;
+    memcpy(base, ": ", 2);
+    base += 2;
+    memcpy(base, h[i].value.base, l2);
+    base += l2;
+    memcpy(base, "\r\n", 2);
+    base += 2;
+  }
   return base;
 }
 
@@ -169,18 +167,18 @@ ssize_t http_request_read(http_request *request, segment data)
 
   if (segment_equal_case(http_headers_lookup(&request->headers, segment_string("Transfer-Encoding")),
                          segment_string("Chunked")))
-    {
-      body_size = http_dechunk(segment_offset(data, header_size), &request->body);
-      return body_size ? header_size + body_size : 0;
-    }
+  {
+    body_size = http_dechunk(segment_offset(data, header_size), &request->body);
+    return body_size ? header_size + body_size : 0;
+  }
 
   value = http_headers_lookup(&request->headers, segment_string("Content-Length"));
   if (value.size)
-    {
-      body_size = strtoull(value.base, NULL, 10);
-      request->body = segment_data((char *) data.base + header_size, body_size);
-      return header_size + body_size <= data.size ? header_size + body_size : 0;
-    }
+  {
+    body_size = strtoull(value.base, NULL, 10);
+    request->body = segment_data((char *) data.base + header_size, body_size);
+    return header_size + body_size <= data.size ? header_size + body_size : 0;
+  }
 
   return header_size;
 }
@@ -207,18 +205,18 @@ ssize_t http_response_read(http_response *response, segment data)
 
   if (segment_equal_case(http_headers_lookup(&response->headers, segment_string("Transfer-Encoding")),
                          segment_string("Chunked")))
-    {
-      body_size = http_dechunk(segment_offset(data, header_size), &response->body);
-      return body_size ? header_size + body_size : 0;
-    }
+  {
+    body_size = http_dechunk(segment_offset(data, header_size), &response->body);
+    return body_size ? header_size + body_size : 0;
+  }
 
   value = http_headers_lookup(&response->headers, segment_string("Content-Length"));
   if (value.size)
-    {
-      body_size = strtoull(value.base, NULL, 10);
-      response->body = segment_data((char *) data.base + header_size, body_size);
-      return header_size + body_size <= data.size ? header_size + body_size : 0;
-    }
+  {
+    body_size = strtoull(value.base, NULL, 10);
+    response->body = segment_data((char *) data.base + header_size, body_size);
+    return header_size + body_size <= data.size ? header_size + body_size : 0;
+  }
 
   return -1;
 }
@@ -236,11 +234,11 @@ void http_response_write(http_response *response, segment segment)
   base[7] = response->version + '0';
   base += 12;
   utility_u32_sprint(response->code, base);
-  base ++;
+  base++;
   memcpy(base, response->reason.base, response->reason.size);
   base += response->reason.size;
-  *base ++ = '\r';
-  *base ++ = '\n';
+  *base++ = '\r';
+  *base++ = '\n';
   base = http_headers_write(&response->headers, base);
   *base++ = '\r';
   *base++ = '\n';
@@ -251,19 +249,16 @@ void http_response_write(http_response *response, segment segment)
 void http_response_construct(http_response *response,
                              int version, int code, segment reason, segment type, segment body)
 {
-  *response = (http_response)
-    {
-     .version = version,
-     .code = code,
-     .reason = reason,
-     .body = body,
-     .headers.count = 2,
-     .headers.header =
-     {
-      {segment_string("Server"), segment_string("libreactor")},
-      {segment_string("Date"), http_date(0)}
-     }
-    };
+  *response = (http_response) {
+      .version = version,
+      .code = code,
+      .reason = reason,
+      .body = body,
+      .headers.count = 2,
+      .headers.header =
+          {
+              {segment_string("Server"), segment_string("libreactor")},
+              {segment_string("Date"), http_date(0)}}};
 
   if (dynamic_likely(type.size))
     http_headers_add(&response->headers, segment_string("Content-Type"), type);

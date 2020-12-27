@@ -52,7 +52,7 @@ static core_status callback_ok(core_event *event)
   return CORE_OK;
 }
 
-static void basic(__attribute__ ((unused)) void **state)
+static void basic(__attribute__((unused)) void **state)
 {
   notify notify;
   char template[PATH_MAX] = "/tmp/notifyXXXXXX";
@@ -118,9 +118,8 @@ static void basic(__attribute__ ((unused)) void **state)
 int main()
 {
   const struct CMUnitTest tests[] =
-    {
-     cmocka_unit_test(basic)
-    };
+      {
+          cmocka_unit_test(basic)};
 
   return cmocka_run_group_tests(tests, NULL, NULL);
 }

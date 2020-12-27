@@ -32,15 +32,15 @@ static void stream_send(stream *stream)
   ssize_t n;
 
   while (size - offset)
-    {
-      if (stream_is_socket(stream))
-        n = send(stream->fd, (char *) buffer_data(b) + offset, size - offset, 0);
-      else
-        n = write(stream->fd, (char *) buffer_data(b) + offset, size - offset);
-      if (n == -1)
-        break;
-      offset += n;
-    }
+  {
+    if (stream_is_socket(stream))
+      n = send(stream->fd, (char *) buffer_data(b) + offset, size - offset, 0);
+    else
+      n = write(stream->fd, (char *) buffer_data(b) + offset, size - offset);
+    if (n == -1)
+      break;
+    offset += n;
+  }
   buffer_erase(b, 0, offset);
 }
 
@@ -51,15 +51,14 @@ static size_t stream_receive(stream *stream)
   ssize_t n;
 
   do
-    {
-      buffer_reserve(b, offset + size + STREAM_BLOCK_SIZE);
-      if (stream_is_socket(stream))
-        n = recv(stream->fd, (char *) buffer_data(b) + offset + size, STREAM_BLOCK_SIZE, 0);
-      else
-        n = read(stream->fd, (char *) buffer_data(b) + offset + size, STREAM_BLOCK_SIZE);
-      size += n > 0 ? n : 0;
-    }
-  while (n == STREAM_BLOCK_SIZE);
+  {
+    buffer_reserve(b, offset + size + STREAM_BLOCK_SIZE);
+    if (stream_is_socket(stream))
+      n = recv(stream->fd, (char *) buffer_data(b) + offset + size, STREAM_BLOCK_SIZE, 0);
+    else
+      n = read(stream->fd, (char *) buffer_data(b) + offset + size, STREAM_BLOCK_SIZE);
+    size += n > 0 ? n : 0;
+  } while (n == STREAM_BLOCK_SIZE);
 
   if (n == 0)
     stream->flags &= ~STREAM_OPEN;
@@ -74,23 +73,23 @@ static core_status stream_callback(core_event *event)
   size_t size;
 
   if (dynamic_unlikely(event->data & EPOLLOUT))
-    {
-      stream_flush(stream);
-      return buffer_size(&stream->output) ? CORE_OK : core_dispatch(&stream->user, STREAM_FLUSH, 0);
-    }
+  {
+    stream_flush(stream);
+    return buffer_size(&stream->output) ? CORE_OK : core_dispatch(&stream->user, STREAM_FLUSH, 0);
+  }
 
   if (dynamic_likely(event->data & EPOLLIN))
+  {
+    size = stream_receive(stream);
+    if (dynamic_likely(size))
     {
-      size = stream_receive(stream);
-      if (dynamic_likely(size))
-        {
-          e = core_dispatch(&stream->user, STREAM_READ, 0);
-          if (dynamic_unlikely(e != CORE_OK))
-            return e;
-        }
-      if (dynamic_likely(stream_is_open(stream) && event->data == EPOLLIN))
-        return CORE_OK;
+      e = core_dispatch(&stream->user, STREAM_READ, 0);
+      if (dynamic_unlikely(e != CORE_OK))
+        return e;
     }
+    if (dynamic_likely(stream_is_open(stream) && event->data == EPOLLIN))
+      return CORE_OK;
+  }
 
   return core_dispatch(&stream->user, STREAM_CLOSE, 0);
 }
@@ -119,10 +118,10 @@ void stream_destruct(stream *stream)
 {
   stream_close(stream);
   if (stream->next)
-    {
-      core_cancel(NULL, stream->next);
-      stream->next = 0;
-    }
+  {
+    core_cancel(NULL, stream->next);
+    stream->next = 0;
+  }
   buffer_destruct(&stream->input);
   buffer_destruct(&stream->output);
 }
@@ -134,10 +133,10 @@ void stream_open(stream *stream, int fd)
 
   e = fstat(fd, &st);
   if (e == -1 || stream_is_open(stream))
-    {
-      stream_abort(stream);
-      return;
-    }
+  {
+    stream_abort(stream);
+    return;
+  }
 
   stream->fd = fd;
   stream->flags |= STREAM_OPEN | (S_ISSOCK(st.st_mode) ? STREAM_SOCKET : 0);
@@ -147,12 +146,12 @@ void stream_open(stream *stream, int fd)
 void stream_close(stream *stream)
 {
   if (stream->fd >= 0)
-    {
-      stream_events(stream, 0);
-      (void) close(stream->fd);
-      stream->fd = -1;
-      stream->flags &= ~STREAM_OPEN;
-    }
+  {
+    stream_events(stream, 0);
+    (void) close(stream->fd);
+    stream->fd = -1;
+    stream->flags &= ~STREAM_OPEN;
+  }
 }
 
 segment stream_read(stream *stream)
