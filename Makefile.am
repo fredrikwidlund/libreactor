@@ -91,11 +91,11 @@ dist_noinst_SCRIPTS = test/valgrind.sh test/coverage.sh Dockerfile
 
 TESTS = $(check_PROGRAMS) test/valgrind.sh test/coverage.sh
 
-server:
+hello:
 	docker build -t reactor-sdk .
-	docker run --rm -v ${PWD}/example:/example reactor-sdk \
-	gcc -Wall -Wpedantic -flto -O3 -static example/server.c -o server -lreactor -ldynamic
-	strip server
+	docker run --rm -v ${PWD}:/work reactor-sdk \
+	gcc -Wall -Wpedantic -march=native -flto -O3 -static /work/example/server.c -o /work/hello -lreactor -ldynamic && \
+	strip hello
 
 indent:
 	clang-format -i src/reactor/*.c test/*.c example/*.c
