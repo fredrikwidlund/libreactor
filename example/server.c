@@ -13,15 +13,15 @@ static core_status handler(core_event *event)
   server_context *context = (server_context *) event->data;
 
   switch (event->type)
-    {
-    case SERVER_REQUEST:
-       server_ok(context, segment_string("text/plain"), segment_string("Hello, World!"));
-       return CORE_OK;
-    default:
-      warn("error");
-      server_destruct(server);
-      return CORE_ABORT;
-    }
+  {
+  case SERVER_REQUEST:
+    server_ok(context, segment_string("text/plain"), segment_string("Hello, World!"));
+    return CORE_OK;
+  default:
+    warn("error");
+    server_destruct(server);
+    return CORE_ABORT;
+  }
 }
 
 int main()

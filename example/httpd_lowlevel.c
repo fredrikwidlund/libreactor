@@ -38,39 +38,38 @@ static core_status client_event(core_event *event)
   ssize_t n;
 
   switch (event->type)
+  {
+  case STREAM_READ:
+    s = stream_read(client);
+    do
     {
-    case STREAM_READ:
-      s = stream_read(client);
-      do
-        {
-          n = http_request_read(&request, segment_offset(s, offset));
-          if (n <= 0)
-            break;
-          if (segment_equal(request.method, segment_string("GET")) && segment_equal(request.target, segment_string("/plaintext")))
-            plaintext(client);
-          else
-            not_found(client);
-          offset += n;
-        }
-      while (offset < s.size);
+      n = http_request_read(&request, segment_offset(s, offset));
+      if (n <= 0)
+        break;
+      if (segment_equal(request.method, segment_string("GET")) && segment_equal(request.target, segment_string("/plaintext")))
+        plaintext(client);
+      else
+        not_found(client);
+      offset += n;
+    } while (offset < s.size);
 
-      if (n == -1)
-        {
-          stream_destruct(client);
-          free(client);
-          return CORE_ABORT;
-       }
-
-      stream_flush(client);
-      stream_consume(client, offset);
-      return CORE_OK;
-    case STREAM_FLUSH:
-      return CORE_OK;
-    default:
+    if (n == -1)
+    {
       stream_destruct(client);
       free(client);
       return CORE_ABORT;
     }
+
+    stream_flush(client);
+    stream_consume(client, offset);
+    return CORE_OK;
+  case STREAM_FLUSH:
+    return CORE_OK;
+  default:
+    stream_destruct(client);
+    free(client);
+    return CORE_ABORT;
+  }
 }
 
 static core_status server_event(core_event *event)
@@ -99,10 +98,10 @@ int main()
   s = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
   if (s == -1)
     err(1, "socket");
-  (void) setsockopt(s, SOL_SOCKET, SO_REUSEPORT, (int[]){1}, sizeof(int));
-  (void) setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (int[]){1}, sizeof(int));
+  (void) setsockopt(s, SOL_SOCKET, SO_REUSEPORT, (int[]) {1}, sizeof(int));
+  (void) setsockopt(s, SOL_SOCKET, SO_REUSEADDR, (int[]) {1}, sizeof(int));
 
-  e = bind(s, (struct sockaddr *) (struct sockaddr_in[]){{.sin_family = AF_INET, .sin_port = htons(8080)}},
+  e = bind(s, (struct sockaddr *) (struct sockaddr_in[]) {{.sin_family = AF_INET, .sin_port = htons(8080)}},
            sizeof(struct sockaddr_in));
   if (e == -1)
     err(1, "bind");

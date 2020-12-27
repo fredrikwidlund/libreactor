@@ -97,4 +97,4 @@ server:
 	strip server
 
 indent:
-	clang-format -i src/reactor/*.c test/*.c
+	clang-format -i src/reactor/*.c test/*.c example/*.c

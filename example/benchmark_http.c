@@ -9,11 +9,11 @@
 #include <reactor.h>
 
 char r[] =
-  "GET /path HTTP/1.0\r\n"
-  "Host: test.com\r\n"
-  "User-Agent: benchmark\r\n"
-  "Accept: */*\r\n"
-  "\r\n";
+    "GET /path HTTP/1.0\r\n"
+    "Host: test.com\r\n"
+    "User-Agent: benchmark\r\n"
+    "Accept: */*\r\n"
+    "\r\n";
 
 int main()
 {
@@ -28,22 +28,22 @@ int main()
   len = strlen(input);
 
   t1 = utility_tsc();
-  for (i = 0; i < iterations; i ++)
-    {
-      n = http_request_read(&request, (segment) {input, len});
-      assert(n == len);
-    }
+  for (i = 0; i < iterations; i++)
+  {
+    n = http_request_read(&request, (segment) {input, len});
+    assert(n == len);
+  }
   t2 = utility_tsc();
   (void) fprintf(stderr, "< %f\n", (double) (t2 - t1) / iterations);
 
   t1 = utility_tsc();
-  for (i = 0; i < iterations; i ++)
-    {
-      http_response_ok(&response, segment_string("text/plain"), segment_string("Hello, World!"));
-      n = http_response_size(&response);
-      assert(n < sizeof output);
-      http_response_write(&response, (segment) {output, n});
-    }
+  for (i = 0; i < iterations; i++)
+  {
+    http_response_ok(&response, segment_string("text/plain"), segment_string("Hello, World!"));
+    n = http_response_size(&response);
+    assert(n < sizeof output);
+    http_response_write(&response, (segment) {output, n});
+  }
   t2 = utility_tsc();
   (void) fprintf(stderr, "> %f\n", (double) (t2 - t1) / iterations);
 }
