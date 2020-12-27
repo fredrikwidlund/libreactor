@@ -1,5 +1,5 @@
-#ifndef TIMER_H_INCLUDED
-#define TIMER_H_INCLUDED
+#ifndef REACTOR_TIMER_H_INCLUDED
+#define REACTOR_TIMER_H_INCLUDED
 
 enum
 {
@@ -20,4 +20,4 @@ void timer_destruct(timer *);
 void timer_set(timer *, uint64_t, uint64_t);
 void timer_clear(timer *);
 
-#endif /* TIMER_H_INCLUDED */
+#endif /* REACTOR_TIMER_H_INCLUDED */

@@ -1,5 +1,5 @@
-#ifndef SERVER_H_INCLUDED
-#define SERVER_H_INCLUDED
+#ifndef REACTOR_SERVER_H_INCLUDED
+#define REACTOR_SERVER_H_INCLUDED
 
 enum
 {
@@ -38,4 +38,4 @@ void server_close(server *);
 void server_destruct(server *);
 void server_ok(server_context *, segment, segment);
 
-#endif /* SERVER_H_INCLUDED */
+#endif /* REACTOR_SERVER_H_INCLUDED */

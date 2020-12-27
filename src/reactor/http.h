@@ -1,5 +1,5 @@
-#ifndef HTTP_H_INCLUDED
-#define HTTP_H_INCLUDED
+#ifndef REACTOR_HTTP_H_INCLUDED
+#define REACTOR_HTTP_H_INCLUDED
 
 #define HTTP_MAX_HEADERS 16
 
@@ -54,4 +54,4 @@ void    http_response_construct(http_response *, int, int, segment, segment, seg
 void    http_response_not_found(http_response *);
 void    http_response_ok(http_response *, segment, segment);
 
-#endif /* HTTP_H_INCLUDED */
+#endif /* REACTOR_HTTP_H_INCLUDED */

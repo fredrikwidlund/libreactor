@@ -1,5 +1,5 @@
-#ifndef NOFITY_H_INCLUDED
-#define NOTIFY_H_INCLUDED
+#ifndef REACTOR_NOFITY_H_INCLUDED
+#define REACTOR_NOTIFY_H_INCLUDED
 
 enum
 {
@@ -21,4 +21,4 @@ void notify_destruct(notify *);
 void notify_watch(notify *, char *, uint32_t);
 int  notify_valid(notify *);
 
-#endif /* NOTIFY_H_INCLUDED */
+#endif /* REACTOR_NOTIFY_H_INCLUDED */

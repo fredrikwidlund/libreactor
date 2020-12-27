@@ -1,5 +1,5 @@
-#ifndef STREAM_H_INCLUDED
-#define STREAM_H_INCLUDED
+#ifndef REACTOR_STREAM_H_INCLUDED
+#define REACTOR_STREAM_H_INCLUDED
 
 #define STREAM_BLOCK_SIZE 65536
 
@@ -43,4 +43,4 @@ void    stream_flush(stream *);
 int     stream_is_open(stream *);
 int     stream_is_socket(stream *);
 
-#endif /* STREAM_H_INCLUDED */
+#endif /* REACTOR_STREAM_H_INCLUDED */
