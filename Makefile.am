@@ -93,7 +93,8 @@ TESTS = $(check_PROGRAMS) test/valgrind.sh test/coverage.sh
 server:
 	docker build -t reactor-sdk .
 	docker run --rm -v ${PWD}/example:/example reactor-sdk \
-	gcc -Wall -Wpedantic -flto -O3 -static \
-	example/server.c -o server \
-	-lreactor -ldynamic
+	gcc -Wall -Wpedantic -flto -O3 -static example/server.c -o server -lreactor -ldynamic
 	strip server
+
+indent:
+	clang-format -i src/reactor/*.c test/*.c
