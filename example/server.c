@@ -1,9 +1,7 @@
 #include <stdio.h>
-#include <signal.h>
 #include <err.h>
 
-#include <dynamic.h>
-#include <reactor.h>
+#include "reactor.h"
 
 typedef struct hello hello;
 struct hello
@@ -46,12 +44,15 @@ int main()
 {
   hello hello = {0};
 
-  signal(SIGPIPE, SIG_IGN);
-  core_construct(NULL);
+  reactor_construct();
   server_construct(&hello.server, request, &hello);
-  server_open(&hello.server, 0, 80);
   timer_construct(&hello.timer, timeout, &hello);
+
+  server_open(&hello.server, 0, 80);
   timer_set(&hello.timer, 1000000000, 1000000000);
-  core_loop(NULL);
-  core_destruct(NULL);
+  reactor_loop();
+
+  timer_destruct(&hello.timer);
+  server_destruct(&hello.server);
+  reactor_destruct();
 }

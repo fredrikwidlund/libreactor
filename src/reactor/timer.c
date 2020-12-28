@@ -7,7 +7,7 @@
 
 #include <dynamic.h>
 
-#include "reactor.h"
+#include "timer.h"
 
 static core_status timer_next(core_event *event)
 {

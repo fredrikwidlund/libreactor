@@ -4,7 +4,6 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <string.h>
-#include <signal.h>
 #include <limits.h>
 #include <unistd.h>
 #include <err.h>
@@ -12,7 +11,6 @@
 #include <sys/epoll.h>
 #include <netinet/in.h>
 
-#include <dynamic.h>
 #include <reactor.h>
 
 static void plaintext(stream *client)
@@ -93,8 +91,8 @@ int main()
 {
   int s, e;
 
-  signal(SIGPIPE, SIG_IGN);
-  core_construct(NULL);
+  reactor_construct();
+
   s = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
   if (s == -1)
     err(1, "socket");
@@ -108,6 +106,7 @@ int main()
 
   (void) listen(s, INT_MAX);
   core_add(NULL, server_event, &s, s, EPOLLIN);
-  core_loop(NULL);
-  core_destruct(NULL);
+
+  reactor_loop();
+  reactor_destruct();
 }

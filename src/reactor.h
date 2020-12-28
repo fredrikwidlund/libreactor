@@ -10,6 +10,9 @@
 extern "C" {
 #endif
 
+#include <dynamic.h>
+
+#include "reactor/reactor.h"
 #include "reactor/timer.h"
 #include "reactor/notify.h"
 #include "reactor/stream.h"

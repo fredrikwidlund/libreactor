@@ -5,7 +5,6 @@
 #include <assert.h>
 #include <sys/types.h>
 
-#include <dynamic.h>
 #include <reactor.h>
 
 char r[] =

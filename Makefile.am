@@ -5,6 +5,7 @@ AM_LDFLAGS = -static
 
 SOURCE_FILES = \
 src/picohttpparser/picohttpparser.c \
+src/reactor/reactor.c \
 src/reactor/timer.c \
 src/reactor/stream.c \
 src/reactor/notify.c \
@@ -13,6 +14,7 @@ src/reactor/server.c
 
 HEADER_FILES = \
 src/picohttpparser/picohttpparser.h \
+src/reactor/reactor.h \
 src/reactor/timer.h \
 src/reactor/stream.h \
 src/reactor/notify.h \

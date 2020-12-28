@@ -8,7 +8,7 @@
 #include <dynamic.h>
 
 #include "picohttpparser/picohttpparser.h"
-#include "reactor.h"
+#include "http.h"
 
 static size_t http_chunk(segment data, segment *chunk)
 {

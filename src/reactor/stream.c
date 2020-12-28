@@ -9,7 +9,7 @@
 
 #include <dynamic.h>
 
-#include "reactor.h"
+#include "stream.h"
 
 static core_status stream_next(core_event *event)
 {

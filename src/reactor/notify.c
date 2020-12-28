@@ -8,7 +8,7 @@
 
 #include <dynamic.h>
 
-#include "reactor.h"
+#include "notify.h"
 
 static core_status notify_next(core_event *event)
 {

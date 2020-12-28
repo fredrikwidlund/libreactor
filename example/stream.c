@@ -4,7 +4,6 @@
 #include <fcntl.h>
 #include <sys/types.h>
 
-#include <dynamic.h>
 #include <reactor.h>
 
 void process(stream *stream)
@@ -40,10 +39,14 @@ int main()
   stream stream;
 
   (void) fcntl(0, F_SETFL, O_NONBLOCK);
-  core_construct(NULL);
+
+  reactor_construct();
   stream_construct(&stream, callback, &stream);
   stream_open(&stream, 0);
-  core_loop(NULL);
-  core_destruct(NULL);
+
+  reactor_loop();
+
+  stream_destruct(&stream);
+  reactor_destruct();
   fflush(stdout);
 }

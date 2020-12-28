@@ -4,7 +4,6 @@
 #include <sys/types.h>
 #include <sys/inotify.h>
 
-#include <dynamic.h>
 #include <reactor.h>
 
 struct state
@@ -45,9 +44,12 @@ int main()
 {
   struct state state = {.count = 10};
 
-  core_construct(NULL);
+  reactor_construct();
   timer_construct(&state.timer, callback, &state);
   timer_set(&state.timer, 0, 1000000000);
-  core_loop(NULL);
-  core_destruct(NULL);
+
+  reactor_loop();
+
+  timer_destruct(&state.timer);
+  reactor_destruct();
 }

@@ -4,7 +4,6 @@
 #include <sys/types.h>
 #include <sys/inotify.h>
 
-#include <dynamic.h>
 #include <reactor.h>
 
 static core_status callback(core_event *event)
@@ -34,9 +33,12 @@ int main(int argc, char **argv)
     exit(1);
   }
 
-  core_construct(NULL);
+  reactor_construct();
   notify_construct(&notify, callback, &notify);
+
   notify_watch(&notify, argv[1], IN_ALL_EVENTS);
-  core_loop(NULL);
-  core_destruct(NULL);
+  reactor_loop();
+
+  notify_destruct(&notify);
+  reactor_destruct();
 }
