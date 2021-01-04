@@ -52,21 +52,19 @@ static size_t http_dechunk(segment data, segment *dechunked)
   return offset;
 }
 
-/*************/
-/* http_date */
-/*************/
-
-segment http_date(int update)
+static segment http_date(void)
 {
   time_t t;
   struct tm tm;
   static const char *days[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
   static const char *months[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
   static __thread char date[30] = "Thu, 01 Jan 1970 00:00:00 GMT";
+  static __thread uint64_t t_last = 0;
 
-  if (dynamic_unlikely(update))
+  if (dynamic_unlikely(core_now(NULL) / 1000000000 != t_last))
   {
-    (void) time(&t);
+    t_last = core_now(NULL) / 1000000000;
+    t = t_last;
     (void) gmtime_r(&t, &tm);
     (void) strftime(date, 30, "---, %d --- %Y %H:%M:%S GMT", &tm);
     memcpy(date, days[tm.tm_wday], 3);
@@ -258,7 +256,7 @@ void http_response_construct(http_response *response,
       .headers.header =
           {
               {segment_string("Server"), segment_string("libreactor")},
-              {segment_string("Date"), http_date(0)}}};
+              {segment_string("Date"), http_date()}}};
 
   if (dynamic_likely(type.size))
     http_headers_add(&response->headers, segment_string("Content-Type"), type);

@@ -38,8 +38,6 @@ struct http_response
   http_headers headers;
 };
 
-segment http_date(int);
-
 void    http_headers_construct(http_headers *);
 size_t  http_headers_count(http_headers *);
 void    http_headers_add(http_headers *, segment, segment);

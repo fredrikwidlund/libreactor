@@ -14,7 +14,6 @@ typedef struct server_session server_session;
 struct server
 {
   core_handler    user;
-  timer           timer;
   int             fd;
   int             next;
   list            sessions;
@@ -33,7 +32,7 @@ struct server_session
 };
 
 void server_construct(server *, core_callback *, void *);
-void server_open(server *, uint32_t, uint16_t);
+void server_open(server *, int);
 void server_close(server *);
 void server_destruct(server *);
 void server_ok(server_context *, segment, segment);

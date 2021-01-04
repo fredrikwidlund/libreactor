@@ -10,7 +10,8 @@ src/reactor/timer.c \
 src/reactor/stream.c \
 src/reactor/notify.c \
 src/reactor/http.c \
-src/reactor/server.c
+src/reactor/server.c \
+src/reactor/net.c
 
 HEADER_FILES = \
 src/picohttpparser/picohttpparser.h \
@@ -19,7 +20,8 @@ src/reactor/timer.h \
 src/reactor/stream.h \
 src/reactor/notify.h \
 src/reactor/http.h \
-src/reactor/server.h
+src/reactor/server.h \
+src/reactor/net.h
 
 lib_LTLIBRARIES = libreactor.la
 libreactor_la_SOURCES = $(SOURCE_FILES) $(HEADER_FILES)
@@ -40,14 +42,21 @@ example/stream \
 example/notify \
 example/httpd_lowlevel \
 example/server \
-example/benchmark_http
+example/server_single \
+example/benchmark_http \
+example/resolve_sync \
+example/resolve_async
 
 example_timer_LDADD = libreactor.la -ldynamic
 example_stream_LDADD = libreactor.la -ldynamic
 example_notify_LDADD = libreactor.la -ldynamic
 example_httpd_lowlevel_LDADD = libreactor.la -ldynamic
 example_server_LDADD = libreactor.la -ldynamic
+example_server_single_LDADD = libreactor.la -ldynamic
 example_benchmark_http_LDADD = libreactor.la -ldynamic
+example_resolve_sync_LDADD = libreactor.la -ldynamic
+example_resolve_async_LDADD = libreactor.la -ldynamic
+example_resolve_async_LDFLAGS = -pthread
 
 MAINTAINERCLEANFILES = aclocal.m4 config.h.in configure Makefile.in libreactor-?.?.?.tar.gz
 

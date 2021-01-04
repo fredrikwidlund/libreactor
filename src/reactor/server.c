@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <limits.h>
 #include <sys/epoll.h>
@@ -73,20 +74,6 @@ static core_status server_session_handler(core_event *event)
   return CORE_ABORT;
 }
 
-static core_status server_timer_handler(core_event *event)
-{
-  server *server = event->state;
-
-  if (event->type != TIMER_ALARM)
-  {
-    server_fatal(server);
-    return CORE_ABORT;
-  }
-
-  http_date(1);
-  return CORE_OK;
-}
-
 static core_status server_fd_handler(core_event *event)
 {
   server *server = event->state;
@@ -114,57 +101,23 @@ static core_status server_fd_handler(core_event *event)
   return CORE_OK;
 }
 
-static int server_fd_bind(server *server, uint32_t ip, uint16_t port)
-{
-  struct sockaddr_in sin = {0};
-  int e;
-
-  e = setsockopt(server->fd, SOL_SOCKET, SO_REUSEPORT, (int[]) {1}, sizeof(int));
-  if (e == -1)
-    return -1;
-  e = setsockopt(server->fd, SOL_SOCKET, SO_REUSEADDR, (int[]) {1}, sizeof(int));
-  if (e == -1)
-    return -1;
-
-  sin.sin_family = AF_INET;
-  sin.sin_addr.s_addr = htonl(ip);
-  sin.sin_port = htons(port);
-  e = bind(server->fd, (struct sockaddr *) &sin, sizeof sin);
-  if (e == -1)
-    return -1;
-
-  return listen(server->fd, INT_MAX);
-}
-
 void server_construct(server *server, core_callback *callback, void *state)
 {
   *server = (struct server) {.user = {.callback = callback, .state = state}, .fd = -1};
-  timer_construct(&server->timer, server_timer_handler, server);
   list_construct(&server->sessions);
 }
 
-void server_open(server *server, uint32_t ip, uint16_t port)
+void server_open(server *server, int fd)
 {
-  int e;
-
-  server->fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0);
-  if (server->fd == -1)
+  if (fd == -1)
   {
     server_fatal(server);
     return;
   }
 
-  e = server_fd_bind(server, ip, port);
-  if (e == -1)
-  {
-    (void) close(server->fd);
-    server->fd = -1;
-    server_fatal(server);
-    return;
-  }
-
+  server->fd = fd;
+  (void) fcntl(server->fd, F_SETFL, O_NONBLOCK);
   core_add(NULL, server_fd_handler, server, server->fd, EPOLLIN | EPOLLET);
-  timer_set(&server->timer, 0, 1000000000);
 }
 
 void server_close(server *server)
@@ -173,7 +126,6 @@ void server_close(server *server)
 
   list_foreach(&server->sessions, session)
       stream_destruct(&session->stream);
-  timer_clear(&server->timer);
   if (server->fd >= 0)
   {
     core_delete(NULL, server->fd);
@@ -186,7 +138,6 @@ void server_destruct(server *server)
 {
   server_close(server);
   list_destruct(&server->sessions, NULL);
-  timer_destruct(&server->timer);
 }
 
 void server_ok(server_context *context, segment type, segment data)
