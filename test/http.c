@@ -18,13 +18,6 @@
 
 #include "reactor.h"
 
-static void date(__attribute__((unused)) void **unused)
-{
-  // update and get date
-  (void) http_date(1);
-  (void) http_date(0);
-}
-
 static void headers(__attribute__((unused)) void **unused)
 {
   http_headers headers;
@@ -134,7 +127,6 @@ int main()
 {
   const struct CMUnitTest tests[] =
       {
-          cmocka_unit_test(date),
           cmocka_unit_test(headers),
           cmocka_unit_test(iterate)};
 
