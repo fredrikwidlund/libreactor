@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <linux/bpf.h>
 #include <linux/filter.h>
+#include <netinet/tcp.h>
 #include <sys/types.h>
 #include <sys/socket.h>
 
@@ -80,6 +81,10 @@ int net_server(struct addrinfo *addrinfo, int flags)
     e = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (int[]) {1}, sizeof(int));
   if (e == 0 && flags & NET_FLAG_REUSE)
     e = setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, (int[]) {1}, sizeof(int));
+  if (e == 0 && flags & NET_FLAG_NODELAY)
+    e = setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (int[]){1}, sizeof(int));
+  if (e == 0 && flags & NET_FLAG_QUICKACK)
+    e = setsockopt(fd, IPPROTO_TCP, TCP_QUICKACK, (int[]){1}, sizeof(int));
   if (e == 0)
     e = bind(fd, addrinfo->ai_addr, addrinfo->ai_addrlen);
   if (e == 0 && addrinfo->ai_socktype == SOCK_STREAM)

@@ -72,7 +72,7 @@ static core_status stream_callback(core_event *event)
   core_status e;
   size_t size;
 
-  if (dynamic_unlikely(event->data & EPOLLOUT))
+  if (dynamic_unlikely(event->data == EPOLLOUT))
   {
     stream_flush(stream);
     return buffer_size(&stream->output) ? CORE_OK : core_dispatch(&stream->user, STREAM_FLUSH, 0);

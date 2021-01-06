@@ -1,13 +1,15 @@
 #ifndef REACTOR_NET_H_INCLUDED
 #define REACTOR_NET_H_INCLUDED
 
-#define NET_SERVER_DEFAULT (NET_FLAG_NONBLOCK | NET_FLAG_REUSE)
+#define NET_SERVER_DEFAULT (NET_FLAG_NONBLOCK | NET_FLAG_REUSE | NET_FLAG_NODELAY)
 
 enum
 {
   NET_FLAG_NONE     = 1 << 0,
   NET_FLAG_NONBLOCK = 1 << 1,
-  NET_FLAG_REUSE    = 1 << 2
+  NET_FLAG_REUSE    = 1 << 2,
+  NET_FLAG_NODELAY  = 1 << 3,
+  NET_FLAG_QUICKACK = 1 << 4
 };
 
 typedef struct net_resolve_job net_resolve_job;

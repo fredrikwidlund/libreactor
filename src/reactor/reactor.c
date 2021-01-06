@@ -20,6 +20,7 @@ static __thread struct reactor reactor = {0};
 
 static void reactor_abort(__attribute__((unused)) int arg)
 {
+  pool_abort(NULL);
   core_abort(NULL);
 }
 
