@@ -7,4 +7,4 @@ Name: libreactor
 Description: Extendable event driven high performance C-abstractions
 Version: @VERSION@
 Libs: -L${libdir} -lreactor
-Cflags: -I${includedir} -flto -fuse-linker-plugin
+Cflags: -I${includedir} -flto

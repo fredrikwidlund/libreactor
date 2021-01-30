@@ -82,9 +82,9 @@ int net_server(struct addrinfo *addrinfo, int flags)
   if (e == 0 && flags & NET_FLAG_REUSE)
     e = setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, (int[]) {1}, sizeof(int));
   if (e == 0 && flags & NET_FLAG_NODELAY)
-    e = setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (int[]){1}, sizeof(int));
+    e = setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (int[]) {1}, sizeof(int));
   if (e == 0 && flags & NET_FLAG_QUICKACK)
-    e = setsockopt(fd, IPPROTO_TCP, TCP_QUICKACK, (int[]){1}, sizeof(int));
+    e = setsockopt(fd, IPPROTO_TCP, TCP_QUICKACK, (int[]) {1}, sizeof(int));
   if (e == 0)
     e = bind(fd, addrinfo->ai_addr, addrinfo->ai_addrlen);
   if (e == 0 && addrinfo->ai_socktype == SOCK_STREAM)
@@ -99,11 +99,11 @@ int net_server(struct addrinfo *addrinfo, int flags)
 int net_server_filter(int fd, int mod)
 {
   struct sock_filter filter[] =
-    {
-      {BPF_LD  | BPF_W | BPF_ABS, 0, 0, SKF_AD_OFF + SKF_AD_CPU}, // A = #cpu
-      {BPF_ALU | BPF_MOD | BPF_K, 0, 0, mod},                     // A = A % group_size
-      {BPF_RET | BPF_A, 0, 0, 0}                                  // return A
-  };
+      {
+          {BPF_LD | BPF_W | BPF_ABS, 0, 0, SKF_AD_OFF + SKF_AD_CPU}, // A = #cpu
+          {BPF_ALU | BPF_MOD | BPF_K, 0, 0, mod},                    // A = A % group_size
+          {BPF_RET | BPF_A, 0, 0, 0}                                 // return A
+      };
   struct sock_fprog prog = {.len = 3, .filter = filter};
   return setsockopt(fd, SOL_SOCKET, SO_ATTACH_REUSEPORT_CBPF, &prog, sizeof(prog));
 }
