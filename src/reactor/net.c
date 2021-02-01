@@ -57,7 +57,7 @@ void net_resolve(char *host, char *serv, int family, int type, int flags, struct
 
   *addrinfo = NULL;
   e = getaddrinfo(host, serv, &hints, addrinfo);
-  if (e != 0)
+  if (e != 0 && *addrinfo)
   {
     freeaddrinfo(*addrinfo);
     *addrinfo = NULL;
