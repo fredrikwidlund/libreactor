@@ -1,10 +1,10 @@
 FROM alpine:edge
-RUN apk add --update alpine-sdk jansson-dev
+RUN apk add --update alpine-sdk linux-headers
 
-RUN wget https://github.com/fredrikwidlund/libdynamic/releases/download/v1.3.0/libdynamic-1.3.0.tar.gz && \
-    tar fvxz libdynamic-1.3.0.tar.gz && \
-    (cd libdynamic-1.3.0/ && ./configure --prefix=/usr AR=gcc-ar NM=gcc-nm RANLIB=gcc-ranlib && make install)
+RUN wget https://github.com/fredrikwidlund/libdynamic/releases/download/v2.3.0/libdynamic-2.3.0.tar.gz && \
+    tar fvxz libdynamic-2.3.0.tar.gz && \
+    (cd libdynamic-2.3.0/ && ./configure && make install)
 
-RUN wget https://github.com/fredrikwidlund/libreactor/releases/download/v1.0.1/libreactor-1.0.1.tar.gz && \
-        tar fvxz libreactor-1.0.1.tar.gz && \
-        (cd libreactor-1.0.1; ./configure --prefix=/usr AR=gcc-ar NM=gcc-nm RANLIB=gcc-ranlib; make install)
+RUN wget https://github.com/fredrikwidlund/libreactor/releases/download/v2.0.0-alpha/libreactor-2.0.0.tar.gz && \
+    tar fvxz libreactor-2.0.0.tar.gz && \
+    (cd libreactor-2.0.0; ./configure && make install)

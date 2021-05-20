@@ -1,0 +1,9 @@
+---
+Language:                               Cpp
+BasedOnStyle:                           Microsoft
+IndentWidth:                            2
+SpaceAfterCStyleCast:                   true
+SpaceBeforeCpp11BracedList:             true
+ColumnLimit:                            0
+SortIncludes:                           false
+...
