@@ -12,9 +12,6 @@ install:
   - sudo apt-get install gcc-6
   - sudo apt-get install libjansson-dev
   - sudo apt-get install -y -qq valgrind
-  - export CC=gcc-6
-  - export NM=gcc-nm-6
-  - export RANLIB=gcc-ranlib-6
   - wget https://cmocka.org/files/1.1/cmocka-1.1.0.tar.xz
   - tar -xvf cmocka-1.1.0.tar.xz
   - cd cmocka-1.1.0
@@ -29,9 +26,9 @@ install:
   - sudo make -C lcov-1.11/ install
   - gem install coveralls-lcov
   - cd ${TRAVIS_BUILD_DIR}
-  - wget https://github.com/fredrikwidlund/libdynamic/releases/download/v1.3.0/libdynamic-1.3.0.tar.gz
-  - tar -xvf libdynamic-1.3.0.tar.gz
-  - cd libdynamic-1.3.0
+  - wget https://github.com/fredrikwidlund/libdynamic/releases/download/v2.3.0/libdynamic-2.3.0.tar.gz
+  - tar -xvf libdynamic-2.3.0.tar.gz
+  - cd libdynamic-2.3.0
   - ./configure
   - sudo make install
 
@@ -41,10 +38,6 @@ branches:
 
 script:
   - cd ${TRAVIS_BUILD_DIR}
-  - export CC=gcc-6
-  - export NM=gcc-nm-6
-  - export AR=gcc-ar-6
-  - export RANLIB=gcc-ranlib-6
   - ./autogen.sh && ./configure && make check
 
 after_success:
