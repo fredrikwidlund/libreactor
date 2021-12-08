@@ -2,8 +2,6 @@
 #include <stdint.h>
 #include <sys/types.h>
 
-#include "dynamic.h"
-
 size_t utility_u32_len(uint32_t n)
 {
   static const uint32_t pow_10[] = {0, 10, 100, 1000, 10000, 100000, 1000000, 10000000, 100000000, 1000000000};

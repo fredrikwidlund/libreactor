@@ -10,10 +10,9 @@
 #include <sys/inotify.h>
 #include <sys/epoll.h>
 
-#include <dynamic.h>
-
 #include "reactor.h"
 #include "descriptor.h"
+#include "list.h"
 #include "notify.h"
 
 static void notify_release_entry(void *arg)
@@ -79,7 +78,7 @@ int notify_watch(notify *notify, char *path, uint32_t mask)
 {
   int fd, wd;
   notify_entry *entry;
-  
+
   if (descriptor_fd(&notify->descriptor) == -1)
   {
     fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
