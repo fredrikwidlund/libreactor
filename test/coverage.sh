@@ -1,6 +1,6 @@
 #!/bin/sh
 
-for file in notify stream
+for file in reactor descriptor stream server net timer notify
 do
     echo [$file]
     test=`gcov -b src/reactor/libreactor_test_a-$file | grep -A4 File.*$file`

@@ -2,35 +2,20 @@
 #include <stdlib.h>
 #include <setjmp.h>
 #include <errno.h>
+#include <sys/epoll.h>
+
 #include <cmocka.h>
 
-int debug_abort = 0;
-int debug_read = 0;
-int debug_inotify_init1 = 0;
+int debug_epoll_wait = 0;
 
-void __real_abort(void);
-void __wrap_abort(void)
+int __real_epoll_wait(int, struct epoll_event *, int, int);
+int __wrap_epoll_wait(int epfd, struct epoll_event *events, int maxevents, int timeout)
 {
-  if (debug_abort)
-    mock_assert(0, "", "", 0);
-  else
-    __real_abort();
-}
-
-ssize_t __real_read(int, void *, size_t);
-ssize_t __wrap_read(int fildes, void *buf, size_t nbyte)
-{
-  if (debug_read)
+  if (debug_epoll_wait)
   {
-    errno = debug_read;
+    errno = EINTR;
     return -1;
   }
   else
-    return __real_read(fildes, buf, nbyte);
-}
-
-ssize_t __real_inotify_init1(int);
-ssize_t __wrap_inotify_init1(int flags)
-{
-  return debug_inotify_init1 ? -1 : __real_inotify_init1(flags);
+    return __real_epoll_wait(epfd, events, maxevents, timeout);
 }

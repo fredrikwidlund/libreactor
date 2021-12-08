@@ -1,18 +1,20 @@
-ACLOCAL_AMFLAGS = ${ACLOCAL_FLAGS} -I m4
-AM_CFLAGS = -std=gnu11 -I../src
-LDADD = -L.. -lreactor -ldynamic
+ACLOCAL_AMFLAGS		= ${ACLOCAL_FLAGS} -I m4
+AM_CFLAGS		= -I../src -O3 -flto -march=native -static
+LDADD			= -L.. -lreactor
 
-bin_PROGRAMS = \
-timer \
-stream \
-notify \
-httpd_lowlevel \
+bin_PROGRAMS 		= \
 server \
-server_single \
-benchmark_http \
-resolve_sync \
-resolve_async
+tls-server \
+timer \
+notify \
+request \
+responder \
+responder3
 
-resolve_async_LDFLAGS = -pthread
+responder_LDADD 	= $(LDADD) -lssl -lcrypto
+responder3_LDADD 	= $(LDADD) -lssl -lcrypto
+request_LDADD 		= $(LDADD) -lssl -lcrypto
+server_LDADD 		= $(LDADD) -lssl -lcrypto
+tls_server_LDADD 	= $(LDADD) -lssl -lcrypto
 
-MAINTAINERCLEANFILES = Makefile.in
+MAINTAINERCLEANFILES 	= Makefile.in

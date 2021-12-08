@@ -1,149 +1,260 @@
 #define _GNU_SOURCE
 
 #include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <fcntl.h>
-#include <unistd.h>
-#include <limits.h>
-#include <sys/epoll.h>
-#include <netinet/in.h>
+#include <stdarg.h>
+#include <string.h>
+#include <assert.h>
+#include <sys/socket.h>
 
-#include <dynamic.h>
-#include <reactor.h>
+#include <openssl/ssl.h>
+#include <openssl/err.h>
 
-static core_status server_fatal_next(core_event *event)
+#include "utility.h"
+#include "reactor.h"
+#include "descriptor.h"
+#include "stream.h"
+#include "timer.h"
+#include "http.h"
+#include "string.h"
+#include "server.h"
+
+string server_date(server *server)
 {
-  server *server = event->state;
-
-  server->next = 0;
-  return core_dispatch(&server->user, SERVER_ERROR, 0);
+  return string_segment(server->date, 29);
 }
 
-static void server_fatal(server *server)
+static void server_date_update(server *server)
 {
-  if (server->next == 0)
-    server->next = core_next(NULL, server_fatal_next, server);
+  time_t t;
+  struct tm tm;
+  static const char *days[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
+  static const char *months[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
+
+  t = time(NULL);
+  (void) gmtime_r(&t, &tm);
+  (void) strftime(server->date, 30, "---, %d --- %Y %H:%M:%S GMT", &tm);
+  memcpy(server->date, days[tm.tm_wday], 3);
+  memcpy(server->date + 8, months[tm.tm_mon], 3);
+
 }
 
-static core_status server_session_read(server_session *session)
+/* prototypes */
+
+static void server_connection_release(server_connection *);
+
+/* server_transaction */
+
+static server_transaction *server_transaction_new(server_connection *connection)
 {
-  server_context context;
-  segment data;
-  size_t offset;
+  server_transaction *transaction = malloc(sizeof *transaction);
+
+  *transaction = (server_transaction) {.ref = 1, .state = SERVER_TRANSACTION_READ_REQUEST, .connection = connection};
+  return transaction;
+}
+
+static void server_transaction_hold(server_transaction *transaction)
+{
+  transaction->ref++;
+}
+
+static void server_transaction_release(server_transaction *transaction)
+{
+  transaction->ref--;
+  if (!transaction->ref)
+    free(transaction);
+}
+
+static void server_transaction_update(server_transaction *transaction)
+{
+  char *base, *begin;
+  size_t size;
   ssize_t n;
-  core_status e;
+  http_request request;
 
-  context.session = session;
-  data = stream_read(&session->stream);
-  for (offset = 0; offset < data.size; offset += n)
+  if (transaction->state != SERVER_TRANSACTION_READ_REQUEST)
+    return;
+  
+  stream_read(&transaction->connection->stream, (void **) &base, &size);
+  begin = base;
+
+  n = http_request_parse(&request, begin, size);
+  if (reactor_likely(n > 0))
   {
-    n = http_request_read(&context.request, segment_offset(data, offset));
-    if (dynamic_unlikely(n == 0))
-      break;
-
-    if (dynamic_unlikely(n == -1))
+    transaction->state = SERVER_TRANSACTION_HANDLE_REQUEST;
+    begin += n;
+    size -= n;
+    server_transaction_hold(transaction);
+    reactor_dispatch(&transaction->connection->server->handler, SERVER_TRANSACTION, (uintptr_t) transaction);
+    if (transaction->connection)
     {
-      stream_destruct(&session->stream);
-      list_erase(session, NULL);
-      return CORE_ABORT;
+      stream_consume(&transaction->connection->stream, begin - base);
+      stream_flush(&transaction->connection->stream);
     }
-
-    e = core_dispatch(&session->server->user, SERVER_REQUEST, (uintptr_t) &context);
-    if (dynamic_unlikely(e != CORE_OK))
-      return e;
+    server_transaction_release(transaction);
   }
-
-  stream_flush(&session->stream);
-  stream_consume(&session->stream, offset);
-  return CORE_OK;
+  else if (n == -1)
+    server_connection_release(transaction->connection);
 }
 
-static core_status server_session_handler(core_event *event)
+void server_transaction_ready(server_transaction *transaction)
 {
-  server_session *session = (server_session *) event->state;
-
-  if (dynamic_likely(event->type == STREAM_READ))
-    return server_session_read(session);
-
-  if (event->type == STREAM_FLUSH)
-    return CORE_OK;
-
-  stream_destruct(&session->stream);
-  list_erase(session, NULL);
-  return CORE_ABORT;
+  transaction->state = SERVER_TRANSACTION_READ_REQUEST;
 }
 
-static core_status server_fd_handler(core_event *event)
+void server_transaction_write(server_transaction *transaction, void *base, size_t size)
+{
+  stream_write(&transaction->connection->stream, base, size);
+}
+
+void server_transaction_send(server_transaction *transaction, http_response *response)
+{
+  http_response_write(response, stream_allocate(&transaction->connection->stream, http_response_size(response)));
+  server_transaction_ready(transaction);
+}
+
+void server_transaction_ok(server_transaction *transaction, string type, const void *body, size_t size)
+{
+  http_write_ok_response(&transaction->connection->stream, server_date(transaction->connection->server),
+                         type, body, size);
+  server_transaction_ready(transaction);
+}
+
+void server_transaction_text(server_transaction *transaction, string text)
+{
+  http_write_ok_response(&transaction->connection->stream, server_date(transaction->connection->server),
+                         string_constant("text/plain"), string_base(text), string_size(text));
+  server_transaction_ready(transaction);  
+}
+
+void server_transaction_printf(server_transaction *transaction, string type, const char *format, ...)
+{
+  va_list ap;
+  char *body;
+  int n;
+
+  va_start(ap, format);
+  n = vasprintf(&body, format, ap);
+  server_transaction_ok(transaction, type, body, n);
+  va_end(ap);
+  free(body);
+}
+
+void server_transaction_disconnect(server_transaction *transaction)
+{
+  server_connection_release(transaction->connection);
+}
+
+/* server_connection */
+
+static void server_connection_release(server_connection *connection)
+{
+  connection->transaction->state = SERVER_TRANSACTION_ABORT;
+  connection->transaction->connection = NULL;
+  server_transaction_release(connection->transaction);
+  stream_destruct(&connection->stream);
+  list_erase(connection, NULL);
+}
+
+static void server_connection_callback(reactor_event *event)
+{
+  server_connection *connection = event->state;
+
+  switch (event->type)
+  {
+  case STREAM_READ:
+    server_transaction_update(connection->transaction);
+    break;
+  default:
+  case STREAM_CLOSE:
+    server_connection_release(connection);
+    break;
+  }
+}
+
+/* server */
+
+static void server_new_connection(server *server, int fd, SSL_CTX *ssl_ctx)
+{
+  server_connection *connection;
+
+  connection = list_push_back(&server->connections, NULL, sizeof *connection);
+  connection->server = server;
+  stream_construct(&connection->stream, server_connection_callback, connection);
+  connection->transaction = server_transaction_new(connection);
+  stream_open(&connection->stream, fd, ssl_ctx, 0);
+}
+
+static void server_descriptor(reactor_event *event)
 {
   server *server = event->state;
-  server_session *session;
   int fd;
 
-  if (event->data != EPOLLIN)
+  switch (event->type)
   {
-    server_fatal(server);
-    return CORE_ABORT;
+  case DESCRIPTOR_READ:
+    while (1)
+    {
+      fd = accept4(descriptor_fd(&server->descriptor), NULL, NULL, SOCK_NONBLOCK);
+      if (fd == -1)
+        break;
+      server_accept(server, fd, server->ssl_ctx);
+    }
+    break;
+  default:
+  case DESCRIPTOR_CLOSE:
+    server_close(server);
+    break;
   }
-
-  while (1)
-  {
-    fd = accept4(server->fd, NULL, NULL, SOCK_NONBLOCK | SOCK_CLOEXEC);
-    if (fd == -1)
-      break;
-
-    session = list_push_back(&server->sessions, NULL, sizeof *session);
-    stream_construct(&session->stream, server_session_handler, session);
-    session->server = server;
-    stream_open(&session->stream, fd);
-  }
-
-  return CORE_OK;
 }
 
-void server_construct(server *server, core_callback *callback, void *state)
+static void server_timer(reactor_event *event)
 {
-  *server = (struct server) {.user = {.callback = callback, .state = state}, .fd = -1};
-  list_construct(&server->sessions);
+  server *server = event->state;
+
+  server_date_update(server);
 }
 
-void server_open(server *server, int fd)
+void server_construct(server *server, reactor_callback *callback, void *state)
 {
-  if (fd == -1)
-  {
-    server_fatal(server);
-    return;
-  }
-
-  server->fd = fd;
-  (void) fcntl(server->fd, F_SETFL, O_NONBLOCK);
-  core_add(NULL, server_fd_handler, server, server->fd, EPOLLIN | EPOLLET);
-}
-
-void server_close(server *server)
-{
-  server_session *session;
-
-  list_foreach(&server->sessions, session)
-      stream_destruct(&session->stream);
-  if (server->fd >= 0)
-  {
-    core_delete(NULL, server->fd);
-    (void) close(server->fd);
-    server->fd = -1;
-  }
+  *server = (struct server) {0};
+  reactor_handler_construct(&server->handler, callback, state);
+  descriptor_construct(&server->descriptor, server_descriptor, server);
+  timer_construct(&server->timer, server_timer, server);
+  list_construct(&server->connections);
 }
 
 void server_destruct(server *server)
 {
   server_close(server);
-  list_destruct(&server->sessions, NULL);
+  SSL_CTX_free(server->ssl_ctx);
+  descriptor_destruct(&server->descriptor);
 }
 
-void server_ok(server_context *context, segment type, segment data)
+void server_open(server *server, int fd, SSL_CTX *ssl_ctx)
 {
-  http_response response;
+  server->ssl_ctx = ssl_ctx;
+  descriptor_open(&server->descriptor, fd, 0);
+  timer_set(&server->timer, 0, 1000000000);
+}
 
-  http_response_ok(&response, type, data);
-  http_response_write(&response, stream_allocate(&context->session->stream, http_response_size(&response)));
+void server_accept(server *server, int fd, SSL_CTX *ssl_ctx)
+{
+  server_new_connection(server, fd, ssl_ctx);
+}
+
+void server_shutdown(server *server)
+{
+  int e;
+
+  e = shutdown(descriptor_fd(&server->descriptor), SHUT_RDWR);
+  assert(e == 0);
+}
+
+void server_close(server *server)
+{
+  timer_clear(&server->timer);
+  descriptor_close(&server->descriptor);
+  while (!list_empty(&server->connections))
+    server_connection_release(list_front(&server->connections));
+  list_destruct(&server->connections, NULL);
 }

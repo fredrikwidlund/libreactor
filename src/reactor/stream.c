@@ -1,115 +1,131 @@
 #include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
-#include <string.h>
-#include <unistd.h>
-#include <sys/stat.h>
 #include <sys/socket.h>
-#include <sys/epoll.h>
+#include <openssl/ssl.h>
 
-#include <dynamic.h>
-
+#include "reactor.h"
+#include "descriptor.h"
 #include "stream.h"
 
-static core_status stream_next(core_event *event)
-{
-  stream *stream = event->state;
+/* stream socket operations */
 
-  stream->next = 0;
-  return core_dispatch(&stream->user, STREAM_ERROR, 0);
+static void stream_socket_open(stream *stream, int fd, SSL_CTX *ssl_ctx)
+{
+  (void) ssl_ctx;
+  descriptor_open(&stream->descriptor, fd, stream->write_notify);
 }
 
-static void stream_abort(stream *stream)
+static void stream_socket_read(stream *stream)
 {
-  stream_close(stream);
-  stream->next = core_next(NULL, stream_next, stream);
-}
-
-static void stream_send(stream *stream)
-{
-  buffer *b = &stream->output;
-  size_t offset = 0, size = buffer_size(b);
-  ssize_t n;
-
-  while (size - offset)
-  {
-    if (stream_is_socket(stream))
-      n = send(stream->fd, (char *) buffer_data(b) + offset, size - offset, 0);
-    else
-      n = write(stream->fd, (char *) buffer_data(b) + offset, size - offset);
-    if (n == -1)
-      break;
-    offset += n;
-  }
-  buffer_erase(b, 0, offset);
-}
-
-static size_t stream_receive(stream *stream)
-{
-  buffer *b = &stream->input;
-  size_t offset = buffer_size(b), size = 0;
   ssize_t n;
 
   do
   {
-    buffer_reserve(b, offset + size + STREAM_BLOCK_SIZE);
-    if (stream_is_socket(stream))
-      n = recv(stream->fd, (char *) buffer_data(b) + offset + size, STREAM_BLOCK_SIZE, 0);
-    else
-      n = read(stream->fd, (char *) buffer_data(b) + offset + size, STREAM_BLOCK_SIZE);
-    size += n > 0 ? n : 0;
-  } while (n == STREAM_BLOCK_SIZE);
-
-  if (n == 0)
-    stream->flags &= ~STREAM_OPEN;
-  b->size += size;
-  return size;
+    buffer_reserve(&stream->input, buffer_size(&stream->input) + STREAM_RECEIVE_SIZE);
+    n = recv(descriptor_fd(&stream->descriptor), (uint8_t *) buffer_data(&stream->input) + buffer_size(&stream->input),
+             STREAM_RECEIVE_SIZE, MSG_DONTWAIT);
+    if (n <= 0)
+      break;
+    stream->input.size += n;
+  } while (n == STREAM_RECEIVE_SIZE);
+  stream->errors += n == 0;
 }
 
-static core_status stream_callback(core_event *event)
+static void stream_socket_write(stream *stream)
+{
+  char *data = buffer_data(&stream->output);
+  size_t size = buffer_size(&stream->output);
+  ssize_t n;
+
+  while (size)
+  {
+    n = send(descriptor_fd(&stream->descriptor), data, size, MSG_DONTWAIT);
+    if (n == -1)
+      break;
+    data += n;
+    size -= n;
+  }
+  buffer_erase(&stream->output, 0, buffer_size(&stream->output) - size);
+  descriptor_write_notify(&stream->descriptor, buffer_size(&stream->output) > 0);
+}
+
+/* stream ssl operations */
+
+static void stream_ssl_open(stream *stream, int fd, SSL_CTX *ssl_ctx)
+{
+  stream->ssl = SSL_new(ssl_ctx);
+  SSL_set_fd(stream->ssl, fd);
+  (SSL_is_server(stream->ssl) ? SSL_set_accept_state : SSL_set_connect_state)(stream->ssl);
+  descriptor_open(&stream->descriptor, fd, stream->write_notify);
+}
+
+static void stream_ssl_update(stream *stream, int return_code)
+{
+  stream->ssl_state = SSL_get_error(stream->ssl, return_code);
+  descriptor_write_notify(&stream->descriptor, (buffer_size(&stream->output) > 0) | (stream->ssl_state == SSL_ERROR_WANT_WRITE));
+  stream->errors += (stream->ssl_state > SSL_ERROR_WANT_WRITE) | (stream->ssl_state == SSL_ERROR_SSL);
+}
+
+static void stream_ssl_read(stream *stream)
+{
+  int n, total = 0;
+
+  while (1)
+  {
+    buffer_reserve(&stream->input, buffer_size(&stream->input) + 16384);
+    n = SSL_read(stream->ssl, (uint8_t *) buffer_data(&stream->input) + buffer_size(&stream->input), 16384);
+    if (n <= 0)
+      break;
+    stream->input.size += n;
+    total += n;
+  }
+  stream_ssl_update(stream, n);
+}
+
+static void stream_ssl_write(stream *stream)
+{
+  ssize_t n;
+
+  if ((buffer_size(&stream->output) > 0) | (stream->ssl_state == SSL_ERROR_WANT_WRITE))
+  {
+    n = SSL_write(stream->ssl, buffer_data(&stream->output), buffer_size(&stream->output));
+    if (n > 0)
+      buffer_erase(&stream->output, 0, n);
+    stream_ssl_update(stream, n);
+  }
+}
+
+/* stream */
+
+static void stream_callback(reactor_event *event)
 {
   stream *stream = event->state;
-  core_status e;
-  size_t size;
 
-  if (dynamic_unlikely(event->data == EPOLLOUT))
+  switch (event->type)
   {
+  case DESCRIPTOR_READ:
+    (stream->ssl ? stream_ssl_read : stream_socket_read)(stream);
+    reactor_dispatch(&stream->handler, stream->errors ? STREAM_CLOSE : STREAM_READ, 0);
+    break;
+  case DESCRIPTOR_WRITE:
     stream_flush(stream);
-    return buffer_size(&stream->output) ? CORE_OK : core_dispatch(&stream->user, STREAM_FLUSH, 0);
-  }
-
-  if (dynamic_likely(event->data & EPOLLIN))
-  {
-    size = stream_receive(stream);
-    if (dynamic_likely(size))
+    if (buffer_size(&stream->output) == 0 && stream->write_notify)
     {
-      e = core_dispatch(&stream->user, STREAM_READ, 0);
-      if (dynamic_unlikely(e != CORE_OK))
-        return e;
+      stream->write_notify = 0;
+      reactor_dispatch(&stream->handler, STREAM_WRITE, 0);
     }
-    if (dynamic_likely(stream_is_open(stream) && event->data == EPOLLIN))
-      return CORE_OK;
+    break;
+  default:
+  case DESCRIPTOR_CLOSE:
+    reactor_dispatch(&stream->handler, STREAM_CLOSE, 0);
+    break;
   }
-
-  return core_dispatch(&stream->user, STREAM_CLOSE, 0);
 }
 
-static void stream_events(stream *stream, int events)
+void stream_construct(stream *stream, reactor_callback *callback, void *state)
 {
-  if (stream->events == events)
-    ;
-  else if (!stream->events)
-    core_add(NULL, stream_callback, stream, stream->fd, events);
-  else if (!events)
-    core_delete(NULL, stream->fd);
-  else
-    core_modify(NULL, stream->fd, events);
-  stream->events = events;
-}
-
-void stream_construct(stream *stream, core_callback *callback, void *state)
-{
-  *stream = (struct stream) {.user = {.callback = callback, .state = state}, .fd = -1};
+  *stream = (struct stream) {0};
+  reactor_handler_construct(&stream->handler, callback, state);
+  descriptor_construct(&stream->descriptor, stream_callback, stream);
   buffer_construct(&stream->input);
   buffer_construct(&stream->output);
 }
@@ -117,67 +133,43 @@ void stream_construct(stream *stream, core_callback *callback, void *state)
 void stream_destruct(stream *stream)
 {
   stream_close(stream);
-  if (stream->next)
-  {
-    core_cancel(NULL, stream->next);
-    stream->next = 0;
-  }
   buffer_destruct(&stream->input);
   buffer_destruct(&stream->output);
+  descriptor_destruct(&stream->descriptor);
+  reactor_handler_destruct(&stream->handler);
 }
 
-void stream_open(stream *stream, int fd)
+void stream_open(stream *stream, int fd, SSL_CTX *ssl_ctx, int write_notify)
 {
-  struct stat st;
-  int e;
-
-  e = fstat(fd, &st);
-  if (e == -1 || stream_is_open(stream))
-  {
-    stream_abort(stream);
-    return;
-  }
-
-  stream->fd = fd;
-  stream->flags |= STREAM_OPEN | (S_ISSOCK(st.st_mode) ? STREAM_SOCKET : 0);
-  stream_events(stream, EPOLLIN | EPOLLET);
+  stream->write_notify = write_notify;
+  (ssl_ctx ? stream_ssl_open : stream_socket_open)(stream, fd, ssl_ctx);
 }
 
 void stream_close(stream *stream)
 {
-  if (stream->fd >= 0)
+  if (descriptor_fd(&stream->descriptor) >= 0)
   {
-    stream_events(stream, 0);
-    (void) close(stream->fd);
-    stream->fd = -1;
-    stream->flags &= ~STREAM_OPEN;
+    SSL_free(stream->ssl);
+    descriptor_close(&stream->descriptor);
+    buffer_clear(&stream->input);
+    buffer_clear(&stream->output);
+    stream->write_notify = 0;
+    stream->errors = 0;
+    stream->ssl = NULL;
+    stream->ssl_state = 0;
   }
 }
 
-segment stream_read(stream *stream)
+void stream_write_notify(stream *stream)
 {
-  return segment_data(buffer_data(&stream->input), buffer_size(&stream->input));
+  stream->write_notify = 1;
+  descriptor_write_notify(&stream->descriptor, 1);
 }
 
-segment stream_read_line(stream *stream)
+void stream_read(stream *stream, void **base, size_t *size)
 {
-  segment input;
-  char *delim;
-
-  input = stream_read(stream);
-  delim = memchr(input.base, '\n', input.size);
-  return delim ? segment_data(input.base, delim - (char *) input.base + 1) : segment_empty();
-}
-
-void stream_write(stream *stream, segment output)
-{
-  buffer_insert(&stream->output, buffer_size(&stream->output), output.base, output.size);
-}
-
-segment stream_allocate(stream *stream, size_t size)
-{
-  buffer_resize(&stream->output, buffer_size(&stream->output) + size);
-  return segment_data((char *) buffer_data(&stream->output) + buffer_size(&stream->output) - size, size);
+  *base = buffer_data(&stream->input);
+  *size = buffer_size(&stream->input);
 }
 
 void stream_consume(stream *stream, size_t size)
@@ -185,29 +177,20 @@ void stream_consume(stream *stream, size_t size)
   buffer_erase(&stream->input, 0, size);
 }
 
-void stream_notify(stream *stream)
+void stream_write(stream *stream, void *base, size_t size)
 {
-  if (!stream_is_open(stream))
-    return;
+  buffer_insert(&stream->output, buffer_size(&stream->output), base, size);
+}
 
-  stream_events(stream, EPOLLIN | EPOLLOUT | EPOLLET);
+void *stream_allocate(stream *stream, size_t size)
+{
+  size_t current_size = buffer_size(&stream->output);
+
+  buffer_resize(&stream->output, current_size + size);
+  return (char *) buffer_data(&stream->output) + current_size;
 }
 
 void stream_flush(stream *stream)
 {
-  if (!stream_is_open(stream))
-    return;
-
-  stream_send(stream);
-  stream_events(stream, buffer_size(&stream->output) ? EPOLLIN | EPOLLOUT | EPOLLET : EPOLLIN | EPOLLET);
-}
-
-int stream_is_open(stream *stream)
-{
-  return stream->flags & STREAM_OPEN;
-}
-
-int stream_is_socket(stream *stream)
-{
-  return stream->flags & STREAM_SOCKET;
+  (stream->ssl ? stream_ssl_write : stream_socket_write)(stream);
 }

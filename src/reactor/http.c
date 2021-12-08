@@ -1,275 +1,55 @@
 #include <stdio.h>
-#include <stdlib.h>
-#include <stdint.h>
 #include <string.h>
-#include <time.h>
-#include <sys/types.h>
-
-#include <dynamic.h>
 
 #include "picohttpparser/picohttpparser.h"
 #include "http.h"
+#include "utility.h"
+#include "stream.h"
 
-static size_t http_chunk(segment data, segment *chunk)
+/* http_field */
+
+http_field http_field_constant(string name, string value)
 {
-  char *end;
-  size_t n;
-
-  end = memchr(data.base, '\n', data.size);
-  if (dynamic_unlikely(!end))
-    return 0;
-  *chunk = segment_data(end + 1, strtoul(data.base, NULL, 16));
-  n = (char *) chunk->base - (char *) data.base + chunk->size + 2;
-
-  return dynamic_unlikely(data.size < n) ? 0 : n;
+  return (http_field) {.name = name, .value = value};
 }
 
-static size_t http_dechunk(segment data, segment *dechunked)
+void http_field_push(http_field field, char **base)
 {
-  segment chunk;
-  size_t n, offset;
-
-  *dechunked = segment_data(data.base, 0);
-
-  offset = 0;
-  do
-  {
-    n = http_chunk(segment_offset(data, offset), &chunk);
-    if (dynamic_unlikely(n == 0))
-      return 0;
-    offset += n;
-  } while (chunk.size);
-
-  offset = 0;
-  do
-  {
-    n = http_chunk(segment_offset(data, offset), &chunk);
-    offset += n;
-    memmove((char *) dechunked->base + dechunked->size, chunk.base, chunk.size);
-    dechunked->size += chunk.size;
-  } while (chunk.size);
-
-  return offset;
+  string_push(field.name, base);
+  string_push_char(':', base);
+  string_push_char(' ', base);
+  string_push(field.value, base);
+  string_push_char('\r', base);
+  string_push_char('\n', base);
 }
 
-static segment http_date(void)
-{
-  time_t t;
-  struct tm tm;
-  static const char *days[] = {"Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"};
-  static const char *months[] = {"Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"};
-  static __thread char date[30] = "Thu, 01 Jan 1970 00:00:00 GMT";
-  static __thread uint64_t t_last = 0;
-
-  if (dynamic_unlikely(core_now(NULL) / 1000000000 != t_last))
-  {
-    t_last = core_now(NULL) / 1000000000;
-    t = t_last;
-    (void) gmtime_r(&t, &tm);
-    (void) strftime(date, 30, "---, %d --- %Y %H:%M:%S GMT", &tm);
-    memcpy(date, days[tm.tm_wday], 3);
-    memcpy(date + 8, months[tm.tm_mon], 3);
-  }
-
-  return (segment) {date, 29};
-}
-
-/****************/
-/* http_headers */
-/****************/
-
-void http_headers_construct(http_headers *headers)
-{
-  headers->count = 0;
-}
-
-size_t http_headers_count(http_headers *headers)
-{
-  return headers->count;
-}
-
-void http_headers_add(http_headers *headers, segment name, segment value)
-{
-  if (dynamic_unlikely(headers->count < HTTP_MAX_HEADERS))
-  {
-    headers->header[headers->count] = (http_header) {name, value};
-    headers->count++;
-  }
-}
-
-segment http_headers_lookup(http_headers *headers, segment name)
-{
-  size_t i;
-
-  for (i = 0; i < headers->count; i++)
-    if (segment_equal_case(headers->header[i].name, name))
-      return headers->header[i].value;
-  return segment_empty();
-}
-
-static size_t http_headers_size(http_headers *headers)
-{
-  size_t size, i;
-
-  size = headers->count * 4;
-  for (i = 0; i < headers->count; i++)
-    size += headers->header[i].name.size + headers->header[i].value.size;
-
-  return size;
-}
-
-static char *http_headers_write(http_headers *headers, char *base)
-{
-  http_header *h = headers->header;
-  size_t i = 0, l1, l2;
-
-  for (i = 0; i < headers->count; i++)
-  {
-    l1 = h[i].name.size;
-    l2 = h[i].value.size;
-    memcpy(base, h[i].name.base, l1);
-    base += l1;
-    memcpy(base, ": ", 2);
-    base += 2;
-    memcpy(base, h[i].value.base, l2);
-    base += l2;
-    memcpy(base, "\r\n", 2);
-    base += 2;
-  }
-  return base;
-}
-
-/****************/
 /* http_request */
-/****************/
 
-ssize_t http_request_read(http_request *request, segment data)
+ssize_t http_request_parse(http_request *request, void *base, size_t size)
 {
-  segment value;
-  ssize_t n;
-  size_t header_size, body_size;
+  int n;
 
-  request->body = segment_empty();
-  request->headers.count = HTTP_MAX_HEADERS;
-  n = phr_parse_request(data.base, data.size,
-                        (const char **) &request->method.base, &request->method.size,
-                        (const char **) &request->target.base, &request->target.size,
-                        &request->version,
-                        (struct phr_header *) request->headers.header, &request->headers.count, 0);
-  if (dynamic_likely(n > 0 && segment_equal(request->method, segment_string("GET"))))
-    return n;
-
-  if (n <= 0)
-    return n == -2 ? 0 : -1;
-  header_size = n;
-
-  if (segment_equal_case(http_headers_lookup(&request->headers, segment_string("Transfer-Encoding")),
-                         segment_string("Chunked")))
-  {
-    body_size = http_dechunk(segment_offset(data, header_size), &request->body);
-    return body_size ? header_size + body_size : 0;
-  }
-
-  value = http_headers_lookup(&request->headers, segment_string("Content-Length"));
-  if (value.size)
-  {
-    body_size = strtoull(value.base, NULL, 10);
-    request->body = segment_data((char *) data.base + header_size, body_size);
-    return header_size + body_size <= data.size ? header_size + body_size : 0;
-  }
-
-  return header_size;
+  request->fields_count = 16;
+  n = phr_parse_request(base, size,
+                        &request->method.base, &request->method.size,
+                        &request->target.base, &request->target.size,
+                        &request->minor_version, (struct phr_header *) request->fields, &request->fields_count, 0);
+  return n;
 }
 
-/*****************/
 /* http_response */
-/*****************/
 
-ssize_t http_response_read(http_response *response, segment data)
+void http_write_ok_response(stream *stream, string date, string type, const void *body, size_t size)
 {
-  segment value;
-  ssize_t n;
-  size_t header_size, body_size;
+  char string_storage[16];
+  string length = string_integer(size, string_storage);
+  char *base = stream_allocate(stream, 17 + 17 + 37 + (16 + string_size(type)) + (18 + string_size(length)) + 2 + size);
 
-  response->body = segment_empty();
-  response->headers.count = HTTP_MAX_HEADERS;
-  n = phr_parse_response(data.base, data.size,
-                         &response->version, &response->code,
-                         (const char **) &response->reason.base, &response->reason.size,
-                         (struct phr_header *) response->headers.header, &response->headers.count, 0);
-  if (dynamic_unlikely(n <= 0))
-    return n == -2 ? 0 : -1;
-  header_size = n;
-
-  if (segment_equal_case(http_headers_lookup(&response->headers, segment_string("Transfer-Encoding")),
-                         segment_string("Chunked")))
-  {
-    body_size = http_dechunk(segment_offset(data, header_size), &response->body);
-    return body_size ? header_size + body_size : 0;
-  }
-
-  value = http_headers_lookup(&response->headers, segment_string("Content-Length"));
-  if (value.size)
-  {
-    body_size = strtoull(value.base, NULL, 10);
-    response->body = segment_data((char *) data.base + header_size, body_size);
-    return header_size + body_size <= data.size ? header_size + body_size : 0;
-  }
-
-  return -1;
-}
-
-size_t http_response_size(http_response *response)
-{
-  return 17 + response->reason.size + response->body.size + http_headers_size(&response->headers);
-}
-
-void http_response_write(http_response *response, segment segment)
-{
-  char *base = segment.base;
-
-  memcpy(base, "HTTP/1.0 000 ", 13);
-  base[7] = response->version + '0';
-  base += 12;
-  utility_u32_sprint(response->code, base);
-  base++;
-  memcpy(base, response->reason.base, response->reason.size);
-  base += response->reason.size;
-  *base++ = '\r';
-  *base++ = '\n';
-  base = http_headers_write(&response->headers, base);
-  *base++ = '\r';
-  *base++ = '\n';
-  memcpy(base, response->body.base, response->body.size);
-  base += response->body.size;
-}
-
-void http_response_construct(http_response *response,
-                             int version, int code, segment reason, segment type, segment body)
-{
-  *response = (http_response) {
-      .version = version,
-      .code = code,
-      .reason = reason,
-      .body = body,
-      .headers.count = 2,
-      .headers.header =
-          {
-              {segment_string("Server"), segment_string("libreactor")},
-              {segment_string("Date"), http_date()}}};
-
-  if (dynamic_likely(type.size))
-    http_headers_add(&response->headers, segment_string("Content-Type"), type);
-  if (dynamic_likely(code < 100 || (code >= 200 && code != 204 && code != 304)))
-    http_headers_add(&response->headers, segment_string("Content-Length"), utility_u32_segment(body.size));
-}
-
-void http_response_ok(http_response *response, segment type, segment body)
-{
-  http_response_construct(response, 1, 200, segment_string("OK"), type, body);
-}
-
-void http_response_not_found(http_response *response)
-{
-  http_response_construct(response, 1, 404, segment_string("Not Found"), segment_empty(), segment_empty());
+  string_push(string_constant("HTTP/1.1 200 OK\r\n"), &base);
+  http_field_push(http_field_constant(string_constant("Server"), string_constant("reactor")), &base);
+  http_field_push(http_field_constant(string_constant("Date"), date), &base);
+  http_field_push(http_field_constant(string_constant("Content-Type"), type), &base);
+  http_field_push(http_field_constant(string_constant("Content-Length"), length), &base);
+  string_push(string_constant("\r\n"), &base);
+  memcpy(base, body, size);
 }

@@ -1,55 +1,54 @@
 #ifndef REACTOR_HTTP_H_INCLUDED
 #define REACTOR_HTTP_H_INCLUDED
 
-#define HTTP_MAX_HEADERS 16
+#include "picohttpparser/picohttpparser.h"
+#include "string.h"
+#include "stream.h"
 
-typedef struct http_header   http_header;
-typedef struct http_headers  http_headers;
+typedef struct http_field    http_field;
 typedef struct http_request  http_request;
 typedef struct http_response http_response;
 
-struct http_header
+struct http_field
 {
-  segment       name;
-  segment       value;
-};
-
-struct http_headers
-{
-  size_t        count;
-  http_header   header[HTTP_MAX_HEADERS];
+  string      name;
+  string      value;
 };
 
 struct http_request
 {
-  segment       method;
-  segment       target;
-  int           version;
-  segment       body;
-  http_headers  headers;
+  string      method;
+  string      target;
+  int         minor_version;
+  http_field *fields[16];
+  size_t      fields_count;
+  string      body;
 };
 
+/*
 struct http_response
 {
-  int          version;
-  int          code;
-  segment      reason;
-  segment      body;
-  http_headers headers;
+  int               minor_version;
+  int               code;
+  char             *reason;
+  vector            fields;
+  void             *body;
+  size_t            size;
 };
+*/
 
-void    http_headers_construct(http_headers *);
-size_t  http_headers_count(http_headers *);
-void    http_headers_add(http_headers *, segment, segment);
-segment http_headers_lookup(http_headers *, segment);
+http_field http_field_constant(string, string);
+void       http_field_push(http_field, char **);
 
-ssize_t http_request_read(http_request *, segment);
+ssize_t    http_request_parse(http_request *, void *, size_t);
 
-ssize_t http_response_read(http_response *, segment);
-size_t  http_response_size(http_response *);
-void    http_response_write(http_response *, segment);
-void    http_response_construct(http_response *, int, int, segment, segment, segment);
-void    http_response_not_found(http_response *);
-void    http_response_ok(http_response *, segment, segment);
+void       http_write_ok_response(stream *, string, string, const void *, size_t);
+
+void       http_response_construct(http_response *);
+void       http_response_destruct(http_response *);
+void       http_response_set(http_response *, int, char *, void *, size_t);
+void       http_response_add(http_response *, char *, char *);
+void       http_response_write(http_response *, void *);
+size_t     http_response_size(http_response *);
 
 #endif /* REACTOR_HTTP_H_INCLUDED */

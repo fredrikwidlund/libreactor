@@ -1,40 +1,65 @@
 #ifndef REACTOR_SERVER_H_INCLUDED
 #define REACTOR_SERVER_H_INCLUDED
 
+#include <openssl/ssl.h>
+
+#include "list.h"
+#include "reactor.h"
+#include "stream.h"
+#include "descriptor.h"
+#include "timer.h"
+
 enum
 {
-  SERVER_ERROR,
-  SERVER_REQUEST
+  SERVER_TRANSACTION_READ_REQUEST,
+  SERVER_TRANSACTION_HANDLE_REQUEST,
+  SERVER_TRANSACTION_ABORT
 };
 
-typedef struct server         server;
-typedef struct server_context server_context;
-typedef struct server_session server_session;
+enum
+{
+  SERVER_TRANSACTION
+};
+
+typedef struct server             server;
+typedef struct server_connection  server_connection;
+typedef struct server_transaction server_transaction;
 
 struct server
 {
-  core_handler    user;
-  int             fd;
-  int             next;
-  list            sessions;
+  reactor_handler    handler;
+  descriptor         descriptor;
+  timer              timer;
+  char               date[30];
+  list               connections;
+  SSL_CTX           *ssl_ctx;
 };
 
-struct server_context
+struct server_transaction
 {
-  server_session *session;
-  http_request    request;
+  size_t             ref;
+  int                state;
+  server_connection *connection;
 };
 
-struct server_session
+struct server_connection
 {
-  stream          stream;
-  server         *server;
+  server             *server;
+  stream              stream;
+  server_transaction *transaction;
 };
 
-void server_construct(server *, core_callback *, void *);
-void server_open(server *, int);
-void server_close(server *);
-void server_destruct(server *);
-void server_ok(server_context *, segment, segment);
+string server_date(server *);
+void   server_construct(server *, reactor_callback *, void *);
+void   server_destruct(server *);
+void   server_open(server *, int, SSL_CTX *);
+void   server_accept(server *, int, SSL_CTX *);
+void   server_shutdown(server *);
+void   server_close(server *);
+
+void   server_transaction_ok(server_transaction *, string, const void *, size_t);
+void   server_transaction_text(server_transaction *, string);
+void   server_transaction_printf(server_transaction *, string, const char *, ...);
+void   server_transaction_disconnect(server_transaction *);
 
 #endif /* REACTOR_SERVER_H_INCLUDED */

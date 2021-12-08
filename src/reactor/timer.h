@@ -1,21 +1,22 @@
 #ifndef REACTOR_TIMER_H_INCLUDED
 #define REACTOR_TIMER_H_INCLUDED
 
-enum
+#include "reactor.h"
+#include "descriptor.h"
+
+enum timer_event_type
 {
-  TIMER_ERROR,
-  TIMER_ALARM
+  TIMER_EXPIRATION
 };
 
 typedef struct timer timer;
 struct timer
 {
-  core_handler user;
-  int          fd;
-  int          next;
+  reactor_handler handler;
+  descriptor      descriptor;
 };
 
-void timer_construct(timer *, core_callback *, void *);
+void timer_construct(timer *, reactor_callback *, void *);
 void timer_destruct(timer *);
 void timer_set(timer *, uint64_t, uint64_t);
 void timer_clear(timer *);

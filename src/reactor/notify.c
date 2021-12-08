@@ -1,103 +1,109 @@
+#define _GNU_SOURCE
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <string.h>
 #include <unistd.h>
+#include <assert.h>
 #include <errno.h>
 #include <sys/inotify.h>
 #include <sys/epoll.h>
 
 #include <dynamic.h>
 
+#include "reactor.h"
+#include "descriptor.h"
 #include "notify.h"
 
-static core_status notify_next(core_event *event)
+static void notify_release_entry(void *arg)
 {
-  notify *notify = event->state;
+  notify_entry *e = arg;
 
-  notify->next = 0;
-  return core_dispatch(&notify->user, NOTIFY_ERROR, 0);
+  free(e->path);
 }
 
-static void notify_abort(notify *notify)
-{
-  notify->error = 1;
-  notify->next = core_next(NULL, notify_next, notify);
-}
-
-static core_status notify_event(core_event *event)
+static void notify_callback(reactor_event *event)
 {
   notify *notify = event->state;
   struct inotify_event *inotify_event;
-  ssize_t n;
+  struct notify_entry *e;
+  struct notify_event notify_event = {0};
   char *p, buf[4096] __attribute__((aligned(__alignof__(struct inotify_event))));
-  core_status e;
+  ssize_t n;
+  int cancel = 0;
 
-  n = read(notify->fd, buf, sizeof buf);
-  if (n == -1)
-    return core_dispatch(&notify->user, NOTIFY_ERROR, 0);
-
-  for (p = buf; p < buf + n; p += sizeof(struct inotify_event) + inotify_event->len)
+  notify->cancel = &cancel;
+  while (1)
   {
-    inotify_event = (struct inotify_event *) p;
-    e = core_dispatch(&notify->user, NOTIFY_EVENT, (uintptr_t) inotify_event);
-    if (e != CORE_OK)
-      return e;
+    n = read(descriptor_fd(&notify->descriptor), buf, sizeof buf);
+    if (n == -1)
+    {
+      assert(errno == EAGAIN);
+      break;
+    }
+    for (p = buf; p < buf + n; p += sizeof(struct inotify_event) + inotify_event->len)
+    {
+      inotify_event = (struct inotify_event *) p;
+      e = list_front(&notify->entries);
+      while (e->id != inotify_event->wd)
+      {
+        e = list_next(e);
+        assert(e != list_end(&notify->entries));
+      }
+      notify_event = (struct notify_event) {.mask = inotify_event->mask, .id = e->id,
+        .name = inotify_event->len ? inotify_event->name : "", .path = e->path};
+      reactor_dispatch(&notify->handler, NOTIFY_EVENT, (uintptr_t) &notify_event);
+      if (cancel)
+        return;
+    }
   }
-
-  return CORE_OK;
+  notify->cancel = NULL;
 }
 
-void notify_construct(notify *notify, core_callback *callback, void *state)
+void notify_construct(notify *notify, reactor_callback *callback, void *state)
 {
-  *notify = (struct notify) {.user = {.callback = callback, .state = state}, .fd = -1};
+  reactor_handler_construct(&notify->handler, callback, state);
+  descriptor_construct(&notify->descriptor, notify_callback, notify);
+  list_construct(&notify->entries);
+  notify->errors = 0;
+  notify->cancel = NULL;
 }
 
-void notify_watch(notify *notify, char *path, uint32_t mask)
+void notify_clear(notify *notify)
 {
-  int fd, e;
+  descriptor_close(&notify->descriptor);
+}
 
-  if (notify->fd != -1)
+int notify_watch(notify *notify, char *path, uint32_t mask)
+{
+  int fd, wd;
+  notify_entry *entry;
+  
+  if (descriptor_fd(&notify->descriptor) == -1)
   {
-    notify_abort(notify);
-    return;
+    fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
+    assert(fd != -1);
+    descriptor_open(&notify->descriptor, fd, 0);
   }
 
-  fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
-  if (fd == -1)
+  wd = inotify_add_watch(descriptor_fd(&notify->descriptor), path, mask);
+  if (wd >= 0)
   {
-    notify_abort(notify);
-    return;
+    entry = list_push_back(&notify->entries, NULL, sizeof *entry);
+    entry->id = wd;
+    entry->path = strdup(path);
   }
-
-  e = inotify_add_watch(fd, path, mask);
-  if (e == -1)
-  {
-    (void) close(fd);
-    notify_abort(notify);
-    return;
-  }
-
-  notify->fd = fd;
-  core_add(NULL, notify_event, notify, notify->fd, EPOLLIN);
+  return wd;
 }
 
 void notify_destruct(notify *notify)
 {
-  if (notify->fd >= 0)
+  notify_clear(notify);
+  list_destruct(&notify->entries, notify_release_entry);
+  if (notify->cancel)
   {
-    core_delete(NULL, notify->fd);
-    (void) close(notify->fd);
-    notify->fd = -1;
+    *(notify->cancel) = 1;
+    notify->cancel = NULL;
   }
-
-  if (notify->next)
-  {
-    core_cancel(NULL, notify->next);
-    notify->next = 0;
-  }
-}
-
-int notify_valid(notify *notify)
-{
-  return notify->error == 0;
 }

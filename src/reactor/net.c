@@ -1,109 +1,74 @@
-#include <stdio.h>
-#include <string.h>
-#include <netdb.h>
 #include <unistd.h>
-#include <linux/bpf.h>
-#include <linux/filter.h>
+#include <netdb.h>
 #include <netinet/tcp.h>
-#include <sys/types.h>
-#include <sys/socket.h>
-
-#include <dynamic.h>
+#include <openssl/ssl.h>
+#include <assert.h>
 
 #include "net.h"
 
-static core_status net_resolve_handler(core_event *event)
+struct addrinfo *net_resolve(char *host, char *serv, int family, int type, int flags)
 {
-  net_resolve_job *job = event->state;
-
-  switch (event->type)
-  {
-  case POOL_REQUEST:
-    net_resolve(job->host, job->serv, job->family, job->type, job->flags, &job->addrinfo);
-    break;
-  case POOL_REPLY:
-    (void) core_dispatch(&job->user, 0, (uintptr_t) job);
-    free(job->host);
-    free(job->serv);
-    free(job);
-    break;
-  }
-
-  return CORE_OK;
-}
-
-core_id net_resolve_async(pool *pool, core_callback *callback, void *state, char *host, char *serv, int family, int type,
-                          int flags)
-{
-  net_resolve_job *job;
-
-  job = malloc(sizeof *job);
-  *job = (net_resolve_job) {
-      .pool = pool,
-      .user = {.callback = callback, .state = state},
-      .host = strdup(host),
-      .serv = strdup(serv),
-      .family = family,
-      .type = type,
-      .flags = flags};
-  job->id = pool_enqueue(pool, net_resolve_handler, job);
-  return (core_id) job;
-}
-
-void net_resolve(char *host, char *serv, int family, int type, int flags, struct addrinfo **addrinfo)
-{
-  struct addrinfo hints = {.ai_family = family, .ai_socktype = type, .ai_flags = flags};
+  struct addrinfo *addrinfo = NULL, hints = {.ai_family = family, .ai_socktype = type, .ai_flags = flags};
   int e;
 
-  *addrinfo = NULL;
-  e = getaddrinfo(host, serv, &hints, addrinfo);
-  if (e != 0 && *addrinfo)
+  e = getaddrinfo(host, serv, &hints, &addrinfo);
+  if (e != 0)
   {
-    freeaddrinfo(*addrinfo);
-    *addrinfo = NULL;
+    freeaddrinfo(addrinfo);
+    addrinfo = NULL;
   }
+  return addrinfo;
 }
 
-int net_server(struct addrinfo *addrinfo, int flags)
+int net_socket(struct addrinfo *addrinfo)
 {
-  int fd, e = 0;
+  int fd, e;
 
   if (!addrinfo)
     return -1;
-
-  flags = flags ? flags : NET_SERVER_DEFAULT;
-  fd = socket(addrinfo->ai_family, addrinfo->ai_socktype | (flags & NET_FLAG_NONBLOCK ? SOCK_NONBLOCK : 0),
-              addrinfo->ai_protocol);
-  if (fd == -1)
-    return -1;
-
-  if (e == 0 && flags & NET_FLAG_REUSE)
-    e = setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (int[]) {1}, sizeof(int));
-  if (e == 0 && flags & NET_FLAG_REUSE)
-    e = setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, (int[]) {1}, sizeof(int));
-  if (e == 0 && flags & NET_FLAG_NODELAY)
-    e = setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (int[]) {1}, sizeof(int));
-  if (e == 0 && flags & NET_FLAG_QUICKACK)
-    e = setsockopt(fd, IPPROTO_TCP, TCP_QUICKACK, (int[]) {1}, sizeof(int));
-  if (e == 0)
+  fd = socket(addrinfo->ai_family, addrinfo->ai_socktype | SOCK_NONBLOCK, addrinfo->ai_protocol);
+  if (addrinfo->ai_flags & AI_PASSIVE)
+  {
+    (void) setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (int[]) {1}, sizeof(int));
+    (void) setsockopt(fd, SOL_SOCKET, SO_REUSEPORT, (int[]) {1}, sizeof(int));
     e = bind(fd, addrinfo->ai_addr, addrinfo->ai_addrlen);
-  if (e == 0 && addrinfo->ai_socktype == SOCK_STREAM)
-    e = listen(fd, -1);
-  if (e == 0)
-    return fd;
+    if (e == -1)
+    {
+      e = close(fd);
+      assert(e == 0);
+      fd = -1;
+    }
+    else
+    {
+      e = listen(fd, INT_MAX);
+      assert(e == 0);
+    }
+  }
+  else
+    (void) connect(fd, addrinfo->ai_addr, addrinfo->ai_addrlen);
 
-  (void) close(fd);
-  return -1;
+  freeaddrinfo(addrinfo);
+  return fd;
 }
 
-int net_server_filter(int fd, int mod)
+SSL_CTX *net_ssl_context(char *certificate, char *private_key)
 {
-  struct sock_filter filter[] =
-      {
-          {BPF_LD | BPF_W | BPF_ABS, 0, 0, SKF_AD_OFF + SKF_AD_CPU}, // A = #cpu
-          {BPF_ALU | BPF_MOD | BPF_K, 0, 0, mod},                    // A = A % group_size
-          {BPF_RET | BPF_A, 0, 0, 0}                                 // return A
-      };
-  struct sock_fprog prog = {.len = 3, .filter = filter};
-  return setsockopt(fd, SOL_SOCKET, SO_ATTACH_REUSEPORT_CBPF, &prog, sizeof(prog));
+  SSL_CTX *ctx;
+  int e;
+
+  ctx = SSL_CTX_new(TLS_server_method());
+  assert(ctx != NULL);
+  e = SSL_CTX_use_certificate_file(ctx, certificate, SSL_FILETYPE_PEM);
+  if (e != 1)
+  {
+    SSL_CTX_free(ctx);
+    return NULL;
+  }
+  e = SSL_CTX_use_PrivateKey_file(ctx, private_key, SSL_FILETYPE_PEM);
+  if (e != 1)
+  {
+    SSL_CTX_free(ctx);
+    return NULL;
+  }
+  return ctx;
 }
