@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <setjmp.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
@@ -22,8 +23,7 @@ struct requests
 static void requests_client_callback(reactor_event *event)
 {
   struct requests *r = event->state;
-  void *data;
-  size_t size;
+  data data;
 
   switch (event->type)
   {
@@ -31,7 +31,7 @@ static void requests_client_callback(reactor_event *event)
     if (r->partial)
     {
       assert_true((size_t) r->partial < strlen(r->request));
-      stream_write(&r->client, r->request, r->partial);
+      stream_write(&r->client, data_construct(r->request, r->partial));
       r->request += r->partial;
       r->partial = 0;
       stream_flush(&r->client);
@@ -39,21 +39,21 @@ static void requests_client_callback(reactor_event *event)
     }
     else
     {
-      stream_write(&r->client, r->request, strlen(r->request));
+      stream_write(&r->client, data_construct(r->request, strlen(r->request)));
       stream_flush(&r->client);
     }
     break;
   case STREAM_READ:
-    stream_read(&r->client, &data, &size);
+    data = stream_read(&r->client);
     switch (r->code)
     {
     case 200:
       const char expect200[] = "HTTP/1.1 200 OK\r\n";
-      assert_true(strlen(expect200) < size && strncmp(data, expect200, strlen(expect200)) == 0);
+      assert_true(strlen(expect200) < data_size(data) && strncmp(data_base(data), expect200, strlen(expect200)) == 0);
       break;
     case 404:
       const char expect404[] = "HTTP/1.1 404 Not Found\r\n";
-      assert_true(strlen(expect404) < size && strncmp(data, expect404, strlen(expect404)) == 0);
+      assert_true(strlen(expect404) < data_size(data) && strncmp(data_base(data), expect404, strlen(expect404)) == 0);
       break;
     }
     stream_close(&r->client);
@@ -70,20 +70,20 @@ static void requests_client_callback(reactor_event *event)
 static void requests_server_callback(reactor_event *event)
 {
   server_transaction *t = (server_transaction *) event->data;
+  http_request *r = t->request;
 
-  if (strcmp(t->request.target, "/manual") == 0)
+  if (data_equal(r->target, data_string("/manual")))
   {
-    char reply[] = "HTTP/1.1 200 OK\r\n\r\n";
-    server_transaction_write(t, reply, strlen(reply));
+    server_transaction_write(t, data_string("HTTP/1.1 200 OK\r\n\r\n"));
     server_transaction_ready(t);
   }
-  else if (strcmp(t->request.target, "/text") == 0)
-    server_transaction_text(t, "hi there\n");
-  else if (strcmp(t->request.target, "/printf") == 0)
-    server_transaction_printf(t, 200, "OK", "text/plain", "%d\n", 42);
-  else if (strcmp(t->request.target, "/") == 0)
-    server_transaction_ok(t, "plain/text", "ok", 2);
-  else if (strcmp(t->request.target, "/close") == 0)
+  else if (data_equal(r->target, data_string("/text")))
+    server_transaction_text(t, data_string("hi there\n"));
+  else if (data_equal(r->target, data_string("/")))
+    server_transaction_ok(t, data_string("plain/text"), data_string("ok"));
+  else if (data_equal(r->target, data_string("/printf")))
+    server_transaction_printf(t, data_string("plain/text"), "%d", 42);
+  else if (data_equal(r->target, data_string("/close")))
     server_transaction_disconnect(t);
   else
     server_transaction_not_found(t);

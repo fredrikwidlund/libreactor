@@ -9,18 +9,18 @@
 #include <openssl/ssl.h>
 #include <openssl/err.h>
 
+#include "data.h"
 #include "utility.h"
 #include "reactor.h"
 #include "descriptor.h"
 #include "stream.h"
 #include "timer.h"
 #include "http.h"
-#include "string.h"
 #include "server.h"
 
-string server_date(server *server)
+data server_date(server *server)
 {
-  return string_segment(server->date, 29);
+  return data_construct(server->date, 29);
 }
 
 static void server_date_update(server *server)
@@ -32,10 +32,9 @@ static void server_date_update(server *server)
 
   t = time(NULL);
   (void) gmtime_r(&t, &tm);
-  (void) strftime(server->date, 30, "---, %d --- %Y %H:%M:%S GMT", &tm);
+  (void) strftime(server->date, sizeof server->date, "---, %d --- %Y %H:%M:%S GMT", &tm);
   memcpy(server->date, days[tm.tm_wday], 3);
   memcpy(server->date + 8, months[tm.tm_mon], 3);
-
 }
 
 /* prototypes */
@@ -66,28 +65,24 @@ static void server_transaction_release(server_transaction *transaction)
 
 static void server_transaction_update(server_transaction *transaction)
 {
-  char *base, *begin;
-  size_t size;
+  data data;
   ssize_t n;
   http_request request;
 
   if (transaction->state != SERVER_TRANSACTION_READ_REQUEST)
     return;
-  
-  stream_read(&transaction->connection->stream, (void **) &base, &size);
-  begin = base;
 
-  n = http_request_parse(&request, begin, size);
+  data = stream_read(&transaction->connection->stream);
+  n = http_request_parse(&request, data);
   if (reactor_likely(n > 0))
   {
     transaction->state = SERVER_TRANSACTION_HANDLE_REQUEST;
-    begin += n;
-    size -= n;
+    transaction->request = &request;
     server_transaction_hold(transaction);
     reactor_dispatch(&transaction->connection->server->handler, SERVER_TRANSACTION, (uintptr_t) transaction);
     if (transaction->connection)
     {
-      stream_consume(&transaction->connection->stream, begin - base);
+      stream_consume(&transaction->connection->stream, n);
       stream_flush(&transaction->connection->stream);
     }
     server_transaction_release(transaction);
@@ -101,32 +96,25 @@ void server_transaction_ready(server_transaction *transaction)
   transaction->state = SERVER_TRANSACTION_READ_REQUEST;
 }
 
-void server_transaction_write(server_transaction *transaction, void *base, size_t size)
+void server_transaction_write(server_transaction *transaction, data data)
 {
-  stream_write(&transaction->connection->stream, base, size);
+  stream_write(&transaction->connection->stream, data);
 }
 
-void server_transaction_send(server_transaction *transaction, http_response *response)
+void server_transaction_ok(server_transaction *transaction, data type, data body)
 {
-  http_response_write(response, stream_allocate(&transaction->connection->stream, http_response_size(response)));
+  http_write_ok_response(&transaction->connection->stream, server_date(transaction->connection->server), type, body);
   server_transaction_ready(transaction);
 }
 
-void server_transaction_ok(server_transaction *transaction, string type, const void *body, size_t size)
+void server_transaction_text(server_transaction *transaction, data text)
 {
   http_write_ok_response(&transaction->connection->stream, server_date(transaction->connection->server),
-                         type, body, size);
+                         data_string("text/plain"), text);
   server_transaction_ready(transaction);
 }
 
-void server_transaction_text(server_transaction *transaction, string text)
-{
-  http_write_ok_response(&transaction->connection->stream, server_date(transaction->connection->server),
-                         string_constant("text/plain"), string_base(text), string_size(text));
-  server_transaction_ready(transaction);  
-}
-
-void server_transaction_printf(server_transaction *transaction, string type, const char *format, ...)
+void server_transaction_printf(server_transaction *transaction, data type, const char *format, ...)
 {
   va_list ap;
   char *body;
@@ -134,9 +122,16 @@ void server_transaction_printf(server_transaction *transaction, string type, con
 
   va_start(ap, format);
   n = vasprintf(&body, format, ap);
-  server_transaction_ok(transaction, type, body, n);
+  server_transaction_ok(transaction, type, data_construct(body, n));
   va_end(ap);
   free(body);
+}
+
+void server_transaction_not_found(server_transaction *transaction)
+{
+  http_write_response(&transaction->connection->stream, data_string("404 Not Found"),
+                      server_date(transaction->connection->server), data_null(), data_null());
+  server_transaction_ready(transaction);
 }
 
 void server_transaction_disconnect(server_transaction *transaction)

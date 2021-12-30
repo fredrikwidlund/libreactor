@@ -6,10 +6,16 @@ AM_LDFLAGS			= -static
 DIST_SUBDIRS 			= example
 
 SOURCE_FILES = \
+src/reactor/data.c \
+src/reactor/pointer.c \
 src/reactor/string.c \
 src/reactor/buffer.c \
 src/reactor/vector.c \
 src/reactor/list.c \
+src/reactor/hash.c \
+src/reactor/map.c \
+src/reactor/mapi.c \
+src/reactor/maps.c \
 src/reactor/utility.c \
 src/picohttpparser/picohttpparser.c \
 src/reactor/reactor.c \
@@ -22,10 +28,16 @@ src/reactor/timer.c \
 src/reactor/notify.c
 
 HEADER_FILES = \
-src/reactor/string.h \
+src/reactor/data.h \
+src/reactor/pointer.h \
+src/reactor/string.h\
 src/reactor/buffer.h \
 src/reactor/vector.h \
 src/reactor/list.h \
+src/reactor/hash.h \
+src/reactor/map.h \
+src/reactor/mapi.h \
+src/reactor/maps.h \
 src/reactor/utility.h \
 src/picohttpparser/picohttpparser.h \
 src/reactor/reactor.h \
@@ -69,6 +81,11 @@ CHECK_CFLAGS 			= -std=gnu2x -mno-sse -O0 -g -ftest-coverage -fprofile-arcs -I$(
 CHECK_LDADD 			= -L. libreactor_test.a -lcmocka -lssl -lcrypto
 
 check_PROGRAMS 			=
+
+check_PROGRAMS			+= test/string
+test_string_CFLAGS 		= $(CHECK_CFLAGS)
+test_string_LDADD 		= $(CHECK_LDADD)
+test_string_LDFLAGS 		= $(CHECK_LDFLAGS_EXTRA) -Wl,--wrap=epoll_wait
 
 check_PROGRAMS 			+= test/reactor
 test_reactor_CFLAGS 		= $(CHECK_CFLAGS)

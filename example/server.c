@@ -5,7 +5,10 @@ static void callback(reactor_event *event)
 {
   server_transaction *t = (server_transaction *) event->data;
 
-  server_transaction_text(t, string_constant("Hello, World!"));
+  if (data_equal(t->request->target, data_string("/")))
+    server_transaction_text(t, data_string("Hello, World!"));
+  else
+    server_transaction_not_found(t);
 }
 
 int main()

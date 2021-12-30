@@ -28,21 +28,19 @@ static void request_write(request *r)
     "Connection: keep-alive\r\n"
     "\r\n";
 
-  stream_write(&r->stream, request, strlen(request));
+  stream_write(&r->stream, data_string(request));
   stream_flush(&r->stream);
 }
 
-static void request_read(request *r)
+static void response_read(request *r)
 {
-  void *data;
-  size_t size;
-  char ok[] =  "HTTP/1.1 200 OK\r\n";
+  data data;
 
   r->count++;
-  stream_read(&r->stream, &data, &size);
-  if (size < strlen(ok) || strncmp(data, ok, strlen(ok)) != 0)
+  data = stream_read(&r->stream);
+  if (!data_prefix(data_string("HTTP/1.1 200 OK\r\n"), data))
     assert(0);
-  stream_consume(&r->stream, size);
+  stream_consume(&r->stream, data_size(data));
   if (reactor_now() > r->start + 1000000000)
   {
     r->stop = reactor_now();
@@ -64,14 +62,14 @@ static void request_stream_callback(reactor_event *event)
     request_write(r);
     break;
   case STREAM_READ:
-    request_read(r);
+    response_read(r);
     break;
   }
 }
 
 static void request_server_callback(reactor_event *event)
 {
-  server_transaction_text((server_transaction *)  event->data, string_constant("Hello world"));
+  server_transaction_text((server_transaction *) event->data, data_string("Hello world"));
 }
 
 int main()

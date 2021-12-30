@@ -2,7 +2,7 @@
 
 static void callback(reactor_event *event)
 {
-  server_transaction_text((server_transaction *) event->data, string_constant("Hello, World!"));
+  server_transaction_text((server_transaction *) event->data, data_string("Hello, World!"));
 }
 
 int main()

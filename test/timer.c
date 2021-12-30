@@ -5,7 +5,6 @@
 #include <sys/socket.h>
 
 #include <cmocka.h>
-#include <dynamic.h>
 
 #include "reactor.h"
 

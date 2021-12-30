@@ -3,30 +3,43 @@
 
 #include <stdint.h>
 
-typedef struct string string;
+typedef char *string;
 
-struct string
-{
-  const char *base;
-  size_t      size;
-};
+/* allocators */
 
-/* constructor/destructor */
-
-string      string_segment(const char *, size_t);
-string      string_constant(const char *);
-string      string_integer(uint32_t, char *);
-void        string_push(string, char **);
-void        string_push_char(char, char **);
+string string_new(void);
+string string_copy(string);
+void   string_free(string);
+string string_read(int);
+string string_load(const char *);
 
 /* capacity */
 
-size_t      string_size(string);
-
-/* modifiers */
+string string_allocate(string, size_t);
+string string_resize(string, size_t);
+size_t string_size(string);
+int    string_empty(string);
+int    string_null(string);
 
 /* element access */
 
-const char *string_base(string);
+data   string_data(string);
+data   string_find_data(string, data);
+data   string_find_at_data(string, size_t, data);
+
+/* modifiers */
+
+string string_insert_data(string, size_t, data);
+string string_erase_data(string, data);
+string string_prepend_data(string, data);
+string string_append_data(string, data);
+string string_replace_data(string, data, data);
+string string_replace_all_data(string, data, data);
+
+/* operations */
+
+int    string_equal(string, string);
+void   string_write(string, int);
+int    string_save(string , const char *);
 
 #endif /* REACTOR_STRING_H_INCLUDED */

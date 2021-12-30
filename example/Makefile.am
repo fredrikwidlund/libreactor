@@ -9,10 +9,9 @@ timer \
 notify \
 request \
 responder \
-responder3
+string
 
 responder_LDADD 	= $(LDADD) -lssl -lcrypto
-responder3_LDADD 	= $(LDADD) -lssl -lcrypto
 request_LDADD 		= $(LDADD) -lssl -lcrypto
 server_LDADD 		= $(LDADD) -lssl -lcrypto
 tls_server_LDADD 	= $(LDADD) -lssl -lcrypto

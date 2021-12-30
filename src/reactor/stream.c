@@ -3,6 +3,7 @@
 #include <openssl/ssl.h>
 
 #include "reactor.h"
+#include "data.h"
 #include "descriptor.h"
 #include "stream.h"
 
@@ -166,10 +167,9 @@ void stream_write_notify(stream *stream)
   descriptor_write_notify(&stream->descriptor, 1);
 }
 
-void stream_read(stream *stream, void **base, size_t *size)
+data stream_read(stream *stream)
 {
-  *base = buffer_data(&stream->input);
-  *size = buffer_size(&stream->input);
+  return data_construct(buffer_data(&stream->input), buffer_size(&stream->input));
 }
 
 void stream_consume(stream *stream, size_t size)
@@ -177,9 +177,9 @@ void stream_consume(stream *stream, size_t size)
   buffer_erase(&stream->input, 0, size);
 }
 
-void stream_write(stream *stream, void *base, size_t size)
+void stream_write(stream *stream, data data)
 {
-  buffer_insert(&stream->output, buffer_size(&stream->output), base, size);
+  buffer_insert(&stream->output, buffer_size(&stream->output), (void *) data_base(data), data_size(data));
 }
 
 void *stream_allocate(stream *stream, size_t size)

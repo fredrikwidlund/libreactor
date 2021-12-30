@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <unistd.h>
 #include <setjmp.h>
 #include <sys/epoll.h>
 #include <sys/socket.h>
@@ -18,23 +19,21 @@ struct transfer
   size_t client_read;
   stream server;
   size_t server_read;
-  char *data;
-  size_t size;
+  data   data;
 };
 
 static void transfer_client_callback(reactor_event *event)
 {
   transfer *t = event->state;
-  void *data;
-  size_t size;
+  data data;
 
   switch (event->type)
   {
   case STREAM_READ:
-    stream_read(&t->client, &data, &size);
-    stream_consume(&t->client, size);
-    t->client_read += size;
-    if (t->client_read == t->size)
+    data = stream_read(&t->client);
+    stream_consume(&t->client, data_size(data));
+    t->client_read += data_size(data);
+    if (t->client_read == data_size(t->data))
     {
       stream_close(&t->client);
       stream_close(&t->server);
@@ -42,9 +41,9 @@ static void transfer_client_callback(reactor_event *event)
     break;
   case STREAM_WRITE:
     assert_int_equal(t->client_written, 0);
-    stream_write(&t->client, t->data, t->size);
+    stream_write(&t->client, t->data);
     stream_flush(&t->client);
-    t->client_written = t->size;
+    t->client_written = data_size(t->data);
     break;
   case STREAM_CLOSE:
   default:
@@ -55,16 +54,15 @@ static void transfer_client_callback(reactor_event *event)
 static void transfer_server_callback(reactor_event *event)
 {
   transfer *t = event->state;
-  void *data;
-  size_t size;
+  data data;
 
   switch (event->type)
   {
   case STREAM_READ:
-    stream_read(&t->server, &data, &size);
-    t->server_read += size;
-    stream_write(&t->server, data, size);
-    stream_consume(&t->server, size);
+    data = stream_read(&t->server);
+    t->server_read += data_size(data);
+    stream_write(&t->server, data);
+    stream_consume(&t->server, data_size(data));
     stream_flush(&t->server);
     break;
   case STREAM_WRITE:
@@ -80,8 +78,7 @@ static void transfer_run(transfer *t, int ssl, size_t bytes)
   SSL_CTX *client_ctx = NULL, *server_ctx = NULL;
 
   *t = (transfer) {0};
-  t->size = bytes;
-  t->data = calloc(1, t->size);
+  t->data = data_alloc(bytes);
   assert_int_equal(socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, t->fd), 0);
   if (ssl)
   {
@@ -104,7 +101,7 @@ static void transfer_run(transfer *t, int ssl, size_t bytes)
   stream_destruct(&t->server);
   SSL_CTX_free(client_ctx);
   SSL_CTX_free(server_ctx);
-  free(t->data);
+  data_free(t->data);
 }
 
 static void transfers(void **arg)

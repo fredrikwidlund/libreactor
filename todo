@@ -1,6 +1,5 @@
 * include dynamic
 * rework pool?
 * optional dependency on ssl and pthread
-* alligned allocs?
 * finalise optimised server
 * client

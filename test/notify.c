@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include <setjmp.h>
 #include <dirent.h>
 #include <fcntl.h>
@@ -21,13 +22,13 @@ static void callback(reactor_event *event)
 static void notify_basic(void **state)
 {
   notify n;
-  
+
   (void) state;
   /* receive events for file */
   reactor_construct();
   notify_construct(&n, NULL, NULL);
-  assert_true(notify_watch(&n, "/bin", IN_ALL_EVENTS) > 0); 
-  assert_true(notify_watch(&n, "/", IN_ALL_EVENTS) > 0); 
+  assert_true(notify_watch(&n, "/bin", IN_ALL_EVENTS) > 0);
+  assert_true(notify_watch(&n, "/", IN_ALL_EVENTS) > 0);
   assert_int_equal(closedir(opendir("/bin")), 0);
   assert_int_equal(closedir(opendir("/")), 0);
   assert_int_equal(close(open("/bin/sh", O_RDONLY)), 0);

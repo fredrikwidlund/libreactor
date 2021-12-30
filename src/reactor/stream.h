@@ -3,6 +3,7 @@
 
 #include <openssl/ssl.h>
 
+#include "data.h"
 #include "buffer.h"
 #include "reactor.h"
 #include "descriptor.h"
@@ -34,9 +35,9 @@ void  stream_destruct(stream *);
 void  stream_open(stream *, int, SSL_CTX *, int);
 void  stream_close(stream *);
 void  stream_write_notify(stream *);
-void  stream_read(stream *, void **, size_t *);
+data  stream_read(stream *);
 void  stream_consume(stream *, size_t);
-void  stream_write(stream *, void *, size_t);
+void  stream_write(stream *, data);
 void *stream_allocate(stream *, size_t);
 void  stream_flush(stream *);
 

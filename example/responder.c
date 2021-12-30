@@ -37,7 +37,7 @@ static void t2(stream *s, char *text)
   size_t body_size = strlen(text);
   size_t length_size = utility_u32_len(body_size);
   char *reply;
-  
+
   reply = stream_allocate(s, header_size + length_size + 4 + body_size);
   memcpy(reply, header, header_size);
   memcpy(reply + 40, date, 29);
@@ -70,7 +70,7 @@ static void t3(stream *s, char *text)
   size_t body_size = strlen(text);
   size_t length_size = utility_u32_len(body_size);
   char *reply, *p;
-  
+
   p = reply = stream_allocate(s, header_size + length_size + 4 + body_size);
   push(&p, header, header_size);
   memcpy(reply + 40, date, 29);
@@ -83,7 +83,7 @@ static void t4(stream *s, char *text)
 {
   char *p = stream_allocate(s, 132);
   size_t size = strlen(text);
-  
+
   pushs(&p,
         "HTTP/1.1 200 OK\r\n"
         "Server: reactor\r\n"
@@ -110,7 +110,7 @@ static void pushf(char **p, char *name, char *value)
 {
   size_t name_len = strlen(name);
   size_t value_len = strlen(value);
-  
+
   push(p, name, name_len);
   pushc(p, ':');
   pushc(p, ' ');
@@ -120,7 +120,7 @@ static void pushf(char **p, char *name, char *value)
 }
 
 static void pushf2(char **p, char *name, size_t name_len, char *value, size_t value_len)
-{  
+{
   push(p, name, name_len);
   pushc(p, ':');
   pushc(p, ' ');
@@ -222,7 +222,7 @@ void measure(int n, char *name, void (*f)(stream *, char *))
   stream s;
   int i;
   uint64_t t1, t2;
-  
+
   stream_construct(&s, NULL, NULL);
   t1 = utility_tsc();
   for (i = 0; i < n; i++)
@@ -240,7 +240,7 @@ void measure2(int n, char *name, void (*f)(stream *, char *, size_t))
   stream s;
   int i;
   uint64_t t1, t2;
-  
+
   stream_construct(&s, NULL, NULL);
   t1 = utility_tsc();
   for (i = 0; i < n; i++)
@@ -253,74 +253,44 @@ void measure2(int n, char *name, void (*f)(stream *, char *, size_t))
   printf("[%s] %lu\n", name, (t2 - t1) / n);
 }
 
-typedef struct str str;
-struct str
+static void segment_push_200(pointer *p)
 {
-  size_t      size;
-  const char *data;
-};
-
-static str str_construct(const char *text)
-{
-  return (str) {strlen(text), text};
-}
-
-static void segment_push(char **p, str str)
-{
-  memcpy(*p, str.data, str.size);
-  *p += str.size;
-}
-
-static void segment_push_field(char **p, str name, str value)
-{  
-  segment_push(p, name);
-  pushc(p, ':');
-  pushc(p, ' ');
-  segment_push(p, value);
-  pushc(p, '\r');
-  pushc(p, '\n');
+  pointer_push(p, data_string("HTTP/1.1 200 OK\r\n"));
+  http_field_push(p, http_field_construct(data_string("Server"), data_string("reactor")));
+  http_field_push(p, http_field_construct(data_string("Date"), data_construct(date, 29)));
 }
 
 
-static void segment_push_200(char **p)
+static void segment_push_body(pointer *p, data type, data body)
 {
-  segment_push(p, str_construct("HTTP/1.1 200 OK\r\n"));
-  segment_push_field(p, str_construct("Server"), str_construct("reactor"));
-  segment_push_field(p, str_construct("Date"), (str){.size = 29, .data = date});
+  http_field_push(p, http_field_construct(data_string("Content-Type"), type));
+  pointer_push(p, data_string("Content-Length: "));
+  pointer_move(p, utility_u32_len(data_size(body)));
+  utility_u32_sprint(data_size(body), *p);
+  pointer_push(p, data_string("\r\n\r\n"));
+  pointer_push(p, body);
 }
 
-
-static void segment_push_body(char **p, str type, str data)
+static void segment_measure(stream *s, data text)
 {
-  segment_push_field(p, str_construct("Content-Type"), type);
-  segment_push(p, str_construct("Content-Length: "));
-  *p += utility_u32_len(data.size);
-  utility_u32_sprint(data.size, *p);
-  segment_push(p, str_construct("\r\n\r\n"));
-  push(p, data.data, data.size);  
-}
-
-
-static void segment_measure(stream *s, str text)
-{
-  char *p = stream_allocate(s, 132);
+  pointer p = stream_allocate(s, 132);
 
   segment_push_200(&p);
-  segment_push_body(&p, str_construct("text/plain"), text);
+  segment_push_body(&p, data_string("text/plain"), text);
 }
 
-void measure3(int n, char *name, void (*f)(stream *, str))
+void measure3(int n, char *name, void (*f)(stream *, data))
 {
   stream s;
   int i;
   uint64_t t1, t2;
-  
+
   stream_construct(&s, NULL, NULL);
   buffer_resize(&s.output, 4096);
   t1 = utility_tsc();
   for (i = 0; i < n; i++)
   {
-    f(&s, str_construct("Hello, World!"));
+    f(&s, data_string("Hello, World!"));
     buffer_clear(&s.output);
   }
   t2 = utility_tsc();

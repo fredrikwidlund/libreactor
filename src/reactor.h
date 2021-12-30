@@ -12,9 +12,14 @@ extern "C" {
 
 #include <stdlib.h>
 
+#include "reactor/data.h"
 #include "reactor/buffer.h"
 #include "reactor/vector.h"
 #include "reactor/list.h"
+#include "reactor/hash.h"
+#include "reactor/map.h"
+#include "reactor/mapi.h"
+#include "reactor/maps.h"
 #include "reactor/utility.h"
 #include "reactor/string.h"
 
