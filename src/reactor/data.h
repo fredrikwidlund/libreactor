@@ -14,6 +14,7 @@ struct data
 data        data_alloc(size_t);
 void        data_free(data);
 data        data_construct(const char *, size_t);
+data        data_select(data, size_t, size_t);
 data        data_null(void);
 data        data_string(const char *);
 const void *data_base(data);

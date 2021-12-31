@@ -11,8 +11,6 @@ extern void mock_assert(const int, const char * const, const char * const, const
 #define assert(expression) mock_assert((int)(expression), #expression, __FILE__, __LINE__);
 #endif /* UNIT_TESTING */
 
-#define REACTOR_MAX_EVENTS 32
-
 #define reactor_likely(x)   __builtin_expect(!!(x), 1)
 #define reactor_unlikely(x) __builtin_expect(!!(x), 0)
 

@@ -10,12 +10,12 @@
 extern "C" {
 #endif
 
-#include <stdlib.h>
-
 #include "reactor/data.h"
+#include "reactor/pointer.h"
+#include "reactor/list.h"
+
 #include "reactor/buffer.h"
 #include "reactor/vector.h"
-#include "reactor/list.h"
 #include "reactor/hash.h"
 #include "reactor/map.h"
 #include "reactor/mapi.h"

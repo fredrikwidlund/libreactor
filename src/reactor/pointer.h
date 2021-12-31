@@ -4,6 +4,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "data.h"
+
 typedef void *pointer;
 
 void pointer_move(pointer *, size_t);

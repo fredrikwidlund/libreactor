@@ -7,7 +7,7 @@ typedef char *string;
 
 /* allocators */
 
-string string_new(void);
+string string_null(void);
 string string_copy(string);
 void   string_free(string);
 string string_read(int);
@@ -18,8 +18,8 @@ string string_load(const char *);
 string string_allocate(string, size_t);
 string string_resize(string, size_t);
 size_t string_size(string);
+size_t string_capacity(string);
 int    string_empty(string);
-int    string_null(string);
 
 /* element access */
 

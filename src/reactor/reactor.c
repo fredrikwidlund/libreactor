@@ -10,6 +10,8 @@
 
 #include "reactor.h"
 
+#define REACTOR_MAX_EVENTS 32
+
 /* reactor_handler */
 
 static void reactor_handler_default_callback(reactor_event *event)

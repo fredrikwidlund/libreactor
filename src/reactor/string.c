@@ -28,20 +28,20 @@ static struct string_header *string_header(string s)
 
 /* allocators */
 
-string string_new(void)
+string string_null(void)
 {
   return string_null_object;
 }
 
 void string_free(string s)
 {
-  if (!string_null(s))
+  if (!string_equal(s, string_null()))
     free(string_header(s));
 }
 
 string string_copy(string s)
 {
-  return string_empty(s) ? string_null_object : string_append_data(string_new(), string_data(s));
+  return string_empty(s) ? string_null() : string_append_data(string_null(), string_data(s));
 }
 
 string string_read(int fd)
@@ -50,7 +50,7 @@ string string_read(int fd)
   char buffer[4096];
   ssize_t n;
 
-  s = string_new();
+  s = string_null();
   while (1)
   {
     n = read(fd, buffer, sizeof buffer);
@@ -81,9 +81,9 @@ string string_allocate(string s, size_t capacity)
 {
   struct string_header *header = string_header(s);
 
-  if (capacity >= header->capacity)
+  if (capacity > header->capacity)
   {
-    header = string_null(s) ? calloc(1, sizeof *header + capacity) : realloc(header, sizeof *header + capacity);
+    header = header == &string_header_null_object ? calloc(1, sizeof *header + capacity + 1) : realloc(header, sizeof *header + capacity + 1);
     header->capacity = capacity;
     s = header->string;
   }
@@ -103,14 +103,14 @@ size_t string_size(string s)
   return string_header(s)->size;
 }
 
+size_t string_capacity(string s)
+{
+  return string_header(s)->capacity;
+}
+
 int string_empty(string s)
 {
   return string_size(s) == 0;
-}
-
-int string_null(string s)
-{
-  return s == string_null_object;
 }
 
 /* element access */
@@ -137,10 +137,11 @@ data string_find_at_data(string s, size_t position, data data)
 
 string string_insert_data(string s, size_t offset, data data)
 {
-  s = string_allocate(s, string_size(s) + data_size(data));
-  memmove(s + offset + data_size(data), s + offset, string_size(s) - offset);
+  size_t size = string_size(s);
+
+  s = string_resize(s, size + data_size(data));
+  memmove(s + offset + data_size(data), s + offset, size - offset);
   memcpy(s + offset, data_base(data), data_size(data));
-  s = string_resize(s, string_size(s) + data_size(data));
   return s;
 }
 
@@ -158,12 +159,12 @@ string string_erase_data(string s, data data)
 {
   size_t position;
 
-  if (!data_empty(data))
-  {
-    position = data_offset(string_data(s), data);
-    memmove(s + position, s + position + data_size(data), string_size(s) - position - data_size(data));
-    s = string_resize(s, string_size(s) - data_size(data));
-  }
+  if (data_empty(data))
+    return s;
+  
+  position = data_offset(string_data(s), data);
+  memmove(s + position, s + position + data_size(data), string_size(s) - position - data_size(data));
+  s = string_resize(s, string_size(s) - data_size(data));
   return s;
 }
 
@@ -173,12 +174,12 @@ string string_replace_data(string s, data match, data replace)
   size_t position;
 
   data = string_find_data(s, match);
-  if (!data_empty(data))
-  {
-    position = data_offset(string_data(s), data);
-    s = string_erase_data(s, data);
-    s = string_insert_data(s, position, replace);
-  }
+  if (data_empty(data))
+    return s;
+  
+  position = data_offset(string_data(s), data);
+  s = string_erase_data(s, data);
+  s = string_insert_data(s, position, replace);
   return s;
 }
 

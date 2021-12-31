@@ -44,8 +44,6 @@ static void map_rehash(map *m, size_t size, map_hash *hash, map_set *set, map_eq
   new.elements_count = 0;
   new.elements_capacity = size;
   new.elements = malloc(new.elements_capacity *new.element_size);
-  if (!new.elements)
-    abort();
 
   for (i = 0; i < new.elements_capacity; i++)
     set(map_element(&new, i), NULL);

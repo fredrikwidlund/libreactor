@@ -18,6 +18,11 @@ data data_construct(const char *base, size_t size)
   return (data) {.base = base, .size = size};
 }
 
+data data_select(data data, size_t offset, size_t size)
+{
+  return data_construct((char *) data_base(data) + offset, size);
+}
+
 data data_null(void)
 {
   return (data) {0};
