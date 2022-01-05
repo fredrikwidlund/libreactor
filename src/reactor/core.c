@@ -9,16 +9,13 @@
 #include <sys/epoll.h>
 
 #include "reactor.h"
+#include "core.h"
 
 #define REACTOR_MAX_EVENTS 32
 
 /* reactor_handler */
 
-static void reactor_handler_default_callback(reactor_event *event)
-{
-  (void) event;
-}
-
+static void reactor_handler_default_callback(__attribute__((unused)) reactor_event *event) {}
 static reactor_handler reactor_handler_default = {reactor_handler_default_callback, NULL};
 
 void reactor_handler_construct(reactor_handler *handler, reactor_callback *callback, void *state)
@@ -32,6 +29,16 @@ void reactor_handler_destruct(reactor_handler *handler)
 }
 
 /* reactor */
+
+struct reactor
+{
+  int                 epoll_fd;
+  int                 active;
+  size_t              descriptors;
+  uint64_t            time;
+  struct epoll_event *event;
+  struct epoll_event *event_end;
+};
 
 static __thread reactor reactor_core = {0};
 

@@ -16,10 +16,10 @@ src/reactor/map.c \
 src/reactor/mapi.c \
 src/reactor/maps.c \
 src/reactor/utility.c \
-\
-src/reactor/reactor.c \
+src/reactor/core.c \
 src/reactor/descriptor.c \
 src/reactor/stream.c \
+\
 src/reactor/server.c \
 src/reactor/net.c \
 src/reactor/http.c \
@@ -39,10 +39,10 @@ src/reactor/map.h \
 src/reactor/mapi.h \
 src/reactor/maps.h \
 src/reactor/utility.h \
-\
-src/reactor/reactor.h \
+src/reactor/core.h \
 src/reactor/descriptor.h \
 src/reactor/stream.h \
+\
 src/reactor/server.h \
 src/reactor/net.h \
 src/reactor/http.h \
@@ -94,7 +94,15 @@ test/hash \
 test/map \
 test/mapi \
 test/maps \
-test/utility
+test/utility \
+test/core \
+test/descriptor \
+test/stream
+
+test_core_SOURCES		= test/core.c test/mock.c
+test_core_LDFLAGS 		= -Wl,--wrap=epoll_wait
+
+test_stream_LDADD		= $(LDADD) -lssl -lcrypto
 
 dist_noinst_SCRIPTS 		= test/valgrind.sh test/coverage.sh
 

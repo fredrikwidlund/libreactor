@@ -43,7 +43,8 @@ static void handler(void **arg)
   (void) arg;
   reactor_handler_construct(&state.h, NULL, NULL);
   reactor_dispatch(&state.h, 0, 0);
-
+  reactor_handler_destruct(&state.h);
+  
   reactor_construct();
   assert_true(pipe(state.fd) == 0);
   reactor_handler_construct(&state.h, handler_callback, &state);

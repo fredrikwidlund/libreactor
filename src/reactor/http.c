@@ -2,11 +2,7 @@
 #include <string.h>
 
 #include "picohttpparser/picohttpparser.h"
-#include "data.h"
-#include "pointer.h"
-#include "http.h"
-#include "utility.h"
-#include "stream.h"
+#include "reactor.h"
 
 /* http_field */
 

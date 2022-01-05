@@ -1,8 +1,20 @@
 #include <stdio.h>
 #include <unistd.h>
+#include <sys/epoll.h>
 #include <assert.h>
 
+#include "reactor.h"
 #include "descriptor.h"
+
+static uint32_t descriptor_events(descriptor *descriptor)
+{
+  return
+    EPOLLHUP |
+    EPOLLRDHUP |
+    (descriptor->mask & DESCRIPTOR_READ ? EPOLLIN : 0) |
+    (descriptor->mask & DESCRIPTOR_WRITE ? EPOLLOUT : 0) |
+    (descriptor->mask & DESCRIPTOR_LEVEL ? 0 : EPOLLET);
+}
 
 static void descriptor_callback(reactor_event *event)
 {
@@ -32,38 +44,41 @@ void descriptor_destruct(descriptor *descriptor)
   reactor_handler_destruct(&descriptor->epoll_handler);
 }
 
-void descriptor_open(descriptor *descriptor, int fd, int write_notify)
+void descriptor_open(descriptor *descriptor, int fd, enum descriptor_mask mask)
 {
-  assert(descriptor->fd == -1);
   descriptor->fd = fd;
-  descriptor->write_notify = write_notify;
-  reactor_add(&descriptor->epoll_handler, descriptor->fd, EPOLLHUP | EPOLLRDHUP | EPOLLIN |
-              (descriptor->write_notify ? EPOLLOUT : 0));
+  descriptor->mask = mask;
+  reactor_add(&descriptor->epoll_handler, descriptor->fd, descriptor_events(descriptor));
 }
+
+void descriptor_mask(descriptor *descriptor, enum descriptor_mask mask)
+{
+  if (descriptor->mask == mask)
+    return;
+  descriptor->mask = mask;
+  reactor_modify(&descriptor->epoll_handler, descriptor->fd, descriptor_events(descriptor));
+}
+
 
 void descriptor_close(descriptor *descriptor)
 {
   int e;
 
-  if (descriptor->fd >= 0)
-  {
-    reactor_delete(&descriptor->epoll_handler, descriptor->fd);
-    e = close(descriptor->fd);
-    assert(e == 0);
-    descriptor->fd = -1;
-  }
-}
+  if (!descriptor_active(descriptor))
+    return;
 
-void descriptor_write_notify(descriptor *descriptor, int write_notify)
-{
-  if (descriptor->write_notify != write_notify)
-  {
-    descriptor->write_notify = write_notify;
-    reactor_modify(&descriptor->epoll_handler, descriptor->fd, EPOLLIN | EPOLLET | (descriptor->write_notify ? EPOLLOUT : 0));
-  }
+  reactor_delete(&descriptor->epoll_handler, descriptor->fd);
+  e = close(descriptor->fd);
+  assert(e == 0);
+  descriptor->fd = -1;
 }
 
 int descriptor_fd(descriptor *descriptor)
 {
   return descriptor->fd;
+}
+
+int descriptor_active(descriptor *descriptor)
+{
+  return descriptor->fd >= 0;
 }

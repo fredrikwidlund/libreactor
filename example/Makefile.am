@@ -3,6 +3,9 @@ AM_CFLAGS		= -I../src -O3 -flto -march=native -static
 LDADD			= -L.. -lreactor
 
 bin_PROGRAMS 		= \
+fd \
+descriptor \
+stream \
 server \
 tls-server \
 timer \

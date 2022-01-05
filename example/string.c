@@ -8,8 +8,8 @@ int main()
   string_write(s1, 1);
   string_free(s1);
 
-  s2 = string_append_data(string_new(), data_string("xxx"));
-  s1 = string_append_data(string_new(), data_string("test1"));
+  s2 = string_append_data(string_null(), data_string("xxx"));
+  s1 = string_append_data(string_null(), data_string("test1"));
   s1 = string_prepend_data(s1, data_string(">>>"));
 
   s1 = string_append_data(s1, data_string("test2"));

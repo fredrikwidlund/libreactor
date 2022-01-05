@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <fcntl.h>
 #include <unistd.h>
 #include <setjmp.h>
 #include <sys/epoll.h>
@@ -10,157 +11,146 @@
 
 #include "reactor.h"
 
-typedef struct transfer transfer;
-struct transfer
+struct transfer_state
 {
-  int fd[2];
-  stream client;
-  size_t client_written;
-  size_t client_read;
-  stream server;
-  size_t server_read;
-  data   data;
+  stream from;
+  stream to;
+  size_t remaining;
+  int    notified;
 };
 
-static void transfer_client_callback(reactor_event *event)
+static void transfer_writer(reactor_event *event)
 {
-  transfer *t = event->state;
-  data data;
+  struct transfer_state *state = event->state;
 
-  switch (event->type)
+  assert_int_equal(event->type, STREAM_WRITE);
+  state->notified = 1;
+  if (!state->remaining)
   {
-  case STREAM_READ:
-    data = stream_read(&t->client);
-    stream_consume(&t->client, data_size(data));
-    t->client_read += data_size(data);
-    if (t->client_read == data_size(t->data))
-    {
-      stream_close(&t->client);
-      stream_close(&t->server);
-    }
-    break;
-  case STREAM_WRITE:
-    assert_int_equal(t->client_written, 0);
-    stream_write(&t->client, t->data);
-    stream_flush(&t->client);
-    t->client_written = data_size(t->data);
-    break;
-  case STREAM_CLOSE:
-  default:
-    assert_true(0);
+    stream_destruct(&state->from);
+    stream_destruct(&state->to);
   }
 }
 
-static void transfer_server_callback(reactor_event *event)
+static void transfer_reader(reactor_event *event)
 {
-  transfer *t = event->state;
+  struct transfer_state *state = event->state;
   data data;
 
-  switch (event->type)
-  {
-  case STREAM_READ:
-    data = stream_read(&t->server);
-    t->server_read += data_size(data);
-    stream_write(&t->server, data);
-    stream_consume(&t->server, data_size(data));
-    stream_flush(&t->server);
-    break;
-  case STREAM_WRITE:
-  case STREAM_CLOSE:
-  default:
-    assert_true(0);
-    break;
+  assert_int_equal(event->type, STREAM_READ);
+  data = stream_read(&state->to);
+  stream_consume(&state->to, data_size(data));
+  state->remaining -= data_size(data);
+  if (!state->remaining && state->notified)
+  { 
+    stream_destruct(&state->from);
+    stream_destruct(&state->to);
   }
 }
 
-static void transfer_run(transfer *t, int ssl, size_t bytes)
+static int transfer(int from, int to, int ssl, size_t size)
 {
   SSL_CTX *client_ctx = NULL, *server_ctx = NULL;
+  struct transfer_state state = {.remaining = size};
+  char data[size];
 
-  *t = (transfer) {0};
-  t->data = data_alloc(bytes);
-  assert_int_equal(socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, t->fd), 0);
   if (ssl)
   {
     client_ctx = SSL_CTX_new(TLS_client_method());
-    server_ctx = SSL_CTX_new(TLS_server_method());
-    assert_int_equal(SSL_CTX_use_certificate_file(server_ctx, "example/certs/cert.pem", SSL_FILETYPE_PEM), 1);
-    assert_int_equal(SSL_CTX_use_PrivateKey_file(server_ctx, "example/certs/key.pem", SSL_FILETYPE_PEM), 1);
+    server_ctx = net_ssl_context("test/files/cert.pem", "test/files/key.pem");
+    assert(client_ctx && server_ctx);
   }
-
+ 
+  memset(data, 0, size);
+  from = dup(from);
+  to = dup(to);
+  assert_int_equal(fcntl(from, F_SETFL, O_NONBLOCK), 0);
+  assert_int_equal(fcntl(to, F_SETFL, O_NONBLOCK), 0);
+  
   reactor_construct();
-  stream_construct(&t->client, transfer_client_callback, t);
-  stream_open(&t->client, t->fd[0], client_ctx, 1);
-  stream_construct(&t->server, transfer_server_callback, t);
-  stream_open(&t->server, t->fd[1], server_ctx, 0);
-
+  stream_construct(&state.from, transfer_writer, &state);
+  stream_open(&state.from, from, STREAM_WRITE, client_ctx);
+  stream_construct(&state.to, transfer_reader, &state);
+  stream_open(&state.to, to, STREAM_READ, server_ctx);
+  stream_write(&state.from, data_construct(data, size));
+  stream_flush(&state.from);
+  stream_notify(&state.from);
   reactor_loop();
   reactor_destruct();
 
-  stream_destruct(&t->client);
-  stream_destruct(&t->server);
+  assert_int_equal(state.notified, 1);
   SSL_CTX_free(client_ctx);
   SSL_CTX_free(server_ctx);
-  data_free(t->data);
+  return 0;
 }
 
-static void transfers(void **arg)
+static void test_stream_transfer(__attribute__((unused)) void **arg)
 {
-  transfer t;
-
-  (void) arg;
-  /* transfer */
-  transfer_run(&t, 0, 1);
-  transfer_run(&t, 0, 256);
-  transfer_run(&t, 0, 1048576);
-
-  /* transfer over ssl */
-  transfer_run(&t, 1, 1);
-  transfer_run(&t, 1, 256);
-  transfer_run(&t, 1, 1048576);
-}
-
-static void edge(void **arg)
-{
-  SSL_CTX *client_ctx;
   int fd[2];
-  stream client;
-
-  (void) arg;
-
-  /* stream allocation and write notify */
+  
   assert_int_equal(socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, fd), 0);
-  reactor_construct();
-  stream_construct(&client, NULL, NULL);
-  stream_open(&client, fd[0], NULL, 0);
-  stream_write_notify(&client);
-  stream_allocate(&client, 64);
-  stream_destruct(&client);
+  assert_int_equal(transfer(fd[1], fd[0], 0, 1), 0);
+  assert_int_equal(transfer(fd[1], fd[0], 0, 1024), 0);
+  assert_int_equal(transfer(fd[1], fd[0], 0, 65536), 0);
+  assert_int_equal(transfer(fd[1], fd[0], 0, 2000000), 0);
+  assert_int_equal(transfer(fd[1], fd[0], 1, 2000000), 0);
+  close(fd[0]);
   close(fd[1]);
-  reactor_destruct();
 
-  /* fake SSL_ERROR_WANT_WRITE case  */
-  assert_int_equal(socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, fd), 0);
-  client_ctx = SSL_CTX_new(TLS_client_method());
-  reactor_construct();
-  stream_construct(&client, NULL, NULL);
-  stream_open(&client, fd[0], client_ctx, 1);
-  client.ssl_state = SSL_ERROR_WANT_WRITE;
-  stream_flush(&client);
-  stream_destruct(&client);
-  SSL_CTX_free(client_ctx);
-  reactor_destruct();
-
-  /* provoke ssl error */
-  assert_int_equal(socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, fd), 0);
-  client_ctx = SSL_CTX_new(TLS_client_method());
-  reactor_construct();
-  stream_construct(&client, NULL, NULL);
-  stream_open(&client, fd[0], client_ctx, 1);
+  assert_int_equal(pipe(fd), 0);
+  assert_int_equal(transfer(fd[1], fd[0], 0, 1), 0);
+  assert_int_equal(transfer(fd[1], fd[0], 0, 1024), 0);
+  assert_int_equal(transfer(fd[1], fd[0], 0, 65536), 0);
+  assert_int_equal(transfer(fd[1], fd[0], 0, 2000000), 0);
+  close(fd[0]);
   close(fd[1]);
+}
+
+static void test_stream(__attribute__((unused)) void **arg)
+{
+  int fd[2];
+  stream reader;
+  SSL_CTX *ssl_ctx;
+
+  /* socket close */
+  assert_int_equal(socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, fd), 0);
+  reactor_construct();
+  stream_construct(&reader, NULL, NULL);
+  stream_open(&reader, fd[1], STREAM_READ, NULL);
+  close(fd[0]);
   reactor_loop_once();
-  stream_destruct(&client);
-  SSL_CTX_free(client_ctx);
+  stream_destruct(&reader);
+  reactor_destruct();
+
+  /* socket ssl close */
+  assert_int_equal(socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, fd), 0);
+  ssl_ctx = SSL_CTX_new(TLS_client_method());
+  reactor_construct();
+  stream_construct(&reader, NULL, NULL);
+  stream_open(&reader, fd[1], STREAM_READ, ssl_ctx);
+  close(fd[0]);
+  reactor_loop_once();
+  stream_destruct(&reader);
+  reactor_destruct();
+  SSL_CTX_free(ssl_ctx);
+
+  /* notify/close on inactive */
+  assert_int_equal(socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, fd), 0);
+  reactor_construct();
+  stream_construct(&reader, NULL, NULL);
+  stream_open(&reader, fd[1], STREAM_READ, NULL);
+  close(fd[0]);
+  stream_close(&reader);
+  stream_notify(&reader);
+  stream_close(&reader);
+  stream_destruct(&reader);
+  reactor_destruct();
+
+  /* allocate */
+  reactor_construct();
+  stream_construct(&reader, NULL, NULL);
+  assert_true(stream_allocate(&reader, 4096) != NULL);
+  stream_destruct(&reader);
   reactor_destruct();
 }
 
@@ -168,8 +158,9 @@ int main()
 {
   const struct CMUnitTest tests[] =
       {
-          cmocka_unit_test(transfers),
-          cmocka_unit_test(edge)};
+        cmocka_unit_test(test_stream_transfer),
+        cmocka_unit_test(test_stream)
+      };
 
   return cmocka_run_group_tests(tests, NULL, NULL);
 }

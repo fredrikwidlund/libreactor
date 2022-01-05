@@ -11,9 +11,6 @@
 #include <sys/epoll.h>
 
 #include "reactor.h"
-#include "descriptor.h"
-#include "list.h"
-#include "notify.h"
 
 static void notify_release_entry(void *arg)
 {

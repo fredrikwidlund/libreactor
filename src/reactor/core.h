@@ -3,16 +3,6 @@
 
 #include <stdlib.h>
 #include <stdint.h>
-#include <sys/epoll.h>
-
-#ifdef UNIT_TESTING
-extern void mock_assert(const int, const char * const, const char * const, const int);
-#undef assert
-#define assert(expression) mock_assert((int)(expression), #expression, __FILE__, __LINE__);
-#endif /* UNIT_TESTING */
-
-#define reactor_likely(x)   __builtin_expect(!!(x), 1)
-#define reactor_unlikely(x) __builtin_expect(!!(x), 0)
 
 enum reactor_event_type
 {
@@ -35,16 +25,6 @@ struct reactor_event
   int                 type;
   void               *state;
   uintptr_t           data;
-};
-
-struct reactor
-{
-  int                 epoll_fd;
-  int                 active;
-  size_t              descriptors;
-  uint64_t            time;
-  struct epoll_event *event;
-  struct epoll_event *event_end;
 };
 
 /* reactor_handler */

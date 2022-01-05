@@ -3,7 +3,6 @@
 #include <string.h>
 
 #include "data.h"
-#include "utility.h"
 #include "pointer.h"
 
 void pointer_move(pointer *pointer, size_t size)

@@ -6,6 +6,15 @@
 #define REACTOR_VERSION_MINOR 0
 #define REACTOR_VERSION_PATCH 0
 
+#ifdef UNIT_TESTING
+extern void mock_assert(const int, const char * const, const char * const, const int);
+#undef assert
+#define assert(expression) mock_assert((int)(expression), #expression, __FILE__, __LINE__);
+#endif /* UNIT_TESTING */
+
+#define reactor_likely(x)   __builtin_expect(!!(x), 1)
+#define reactor_unlikely(x) __builtin_expect(!!(x), 0)
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -13,7 +22,6 @@ extern "C" {
 #include "reactor/data.h"
 #include "reactor/pointer.h"
 #include "reactor/list.h"
-
 #include "reactor/buffer.h"
 #include "reactor/vector.h"
 #include "reactor/hash.h"
@@ -22,8 +30,8 @@ extern "C" {
 #include "reactor/maps.h"
 #include "reactor/utility.h"
 #include "reactor/string.h"
-
-#include "reactor/reactor.h"
+#include "reactor/core.h"
+  
 #include "reactor/descriptor.h"
 #include "reactor/stream.h"
 #include "reactor/net.h"

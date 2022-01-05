@@ -1,6 +1,7 @@
 #ifndef REACTOR_DATA_H_INCLUDED
 #define REACTOR_DATA_H_INCLUDED
 
+#include <stdlib.h>
 #include <stdint.h>
 
 typedef struct data data;

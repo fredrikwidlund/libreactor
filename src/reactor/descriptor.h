@@ -1,29 +1,32 @@
 #ifndef REACTOR_DESCRIPTOR_H_INCLUDED
 #define REACTOR_DESCRIPTOR_H_INCLUDED
 
-#include "reactor.h"
+#include "core.h"
 
-enum descriptor_event_type
+enum descriptor_mask
 {
-  DESCRIPTOR_READ,
-  DESCRIPTOR_WRITE,
-  DESCRIPTOR_CLOSE
+  DESCRIPTOR_CLOSE = 0,
+  DESCRIPTOR_READ  = 1,
+  DESCRIPTOR_WRITE = 2,
+  DESCRIPTOR_LEVEL = 4
 };
 
 typedef struct descriptor descriptor;
+
 struct descriptor
 {
-  reactor_handler handler;
-  reactor_handler epoll_handler;
-  int             fd;
-  int             write_notify;
+  reactor_handler      handler;
+  reactor_handler      epoll_handler;
+  int                  fd;
+  enum descriptor_mask mask;
 };
 
 void descriptor_construct(descriptor *, reactor_callback *, void *);
 void descriptor_destruct(descriptor *);
-void descriptor_open(descriptor *, int, int);
+void descriptor_open(descriptor *, int, enum descriptor_mask);
+void descriptor_mask(descriptor *, enum descriptor_mask);
 void descriptor_close(descriptor *);
-void descriptor_write_notify(descriptor *, int);
 int  descriptor_fd(descriptor *);
+int  descriptor_active(descriptor *);
 
 #endif /* REACTOR_DESCRIPTOR_H_INCLUDED */
