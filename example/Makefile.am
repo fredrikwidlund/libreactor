@@ -1,22 +1,21 @@
 ACLOCAL_AMFLAGS		= ${ACLOCAL_FLAGS} -I m4
 AM_CFLAGS		= -I../src -O3 -flto -march=native -static
+AM_LDFLAGS		= -Wl,--gc-sections -fdata-sections -ffunction-sections
 LDADD			= -L.. -lreactor
 
 bin_PROGRAMS 		= \
 fd \
 descriptor \
 stream \
-server \
-tls-server \
 timer \
 notify \
-request \
 responder \
-string
+string \
+http-performance \
+server \
+server-ssl
 
-responder_LDADD 	= $(LDADD) -lssl -lcrypto
-request_LDADD 		= $(LDADD) -lssl -lcrypto
-server_LDADD 		= $(LDADD) -lssl -lcrypto
-tls_server_LDADD 	= $(LDADD) -lssl -lcrypto
+responder_LDADD		= $(LDADD) -lssl -lcrypto
+server_ssl_LDADD	= $(LDADD) -lssl -lcrypto
 
 MAINTAINERCLEANFILES 	= Makefile.in

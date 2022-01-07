@@ -51,7 +51,7 @@ int net_socket(struct addrinfo *addrinfo)
   return fd;
 }
 
-SSL_CTX *net_ssl_context(char *certificate, char *private_key)
+SSL_CTX *net_ssl_server_context(char *certificate, char *private_key)
 {
   SSL_CTX *ctx;
   int e;

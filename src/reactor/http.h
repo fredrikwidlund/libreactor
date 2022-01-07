@@ -11,24 +11,27 @@ typedef struct http_response http_response;
 
 struct http_field
 {
-  data        name;
-  data        value;
+  data       name;
+  data       value;
 };
 
 struct http_request
 {
-  data        method;
-  data        target;
-  int         minor_version;
-  http_field  fields[16];
-  size_t      fields_count;
-  data        body;
+  data       method;
+  data       target;
+  int        minor_version;
+  http_field fields[16];
+  size_t     fields_count;
+  data       body;
 };
 
 http_field http_field_construct(data, data);
 void       http_field_push(pointer *, http_field);
-ssize_t    http_request_parse(http_request *, data);
+data       http_field_lookup(http_field *, size_t, data);
+
+ssize_t    http_read_request(stream *, data *, data *, http_field *, size_t *);
+void       http_write_request(stream *, data, data, data, data, data);
+ssize_t    http_read_response(stream *, int *, data *, http_field *, size_t *);
 void       http_write_response(stream *, data, data, data, data);
-void       http_write_ok_response(stream *, data, data, data);
 
 #endif /* REACTOR_HTTP_H_INCLUDED */

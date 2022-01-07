@@ -1,4 +1,6 @@
 #include <string.h>
+#include <assert.h>
+
 #include <reactor.h>
 
 struct task
@@ -47,11 +49,17 @@ static void callback(reactor_event *event)
 int main()
 {
   server server;
+  SSL_CTX *ssl_ctx;
+
+  ssl_ctx = net_ssl_server_context("../test/files/cert.pem", "../test/files/key.pem");
+  assert(ssl_ctx);
   
   reactor_construct();
   server_construct(&server, callback, &server);
-  server_open(&server, net_socket(net_resolve("127.0.0.1", "80", AF_INET, SOCK_STREAM, AI_PASSIVE)), NULL);
+  server_open(&server, net_socket(net_resolve("127.0.0.1", "443", AF_INET, SOCK_STREAM, AI_PASSIVE)), ssl_ctx);
   reactor_loop();
   server_destruct(&server);
   reactor_destruct();
+
+  SSL_CTX_free(ssl_ctx);
 }

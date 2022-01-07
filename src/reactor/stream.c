@@ -15,6 +15,8 @@ static __thread int stream_ssl_activated = 0;
 
 /* stream socket/pipe operations */
 
+
+#include <err.h>
 static size_t stream_socket_read(stream *stream)
 {
   ssize_t n;
@@ -26,10 +28,7 @@ static size_t stream_socket_read(stream *stream)
     buffer_reserve(&stream->input, buffer_size(&stream->input) + STREAM_RECEIVE_SIZE);
     n = read(descriptor_fd(&stream->descriptor), (uint8_t *) buffer_data(&stream->input) + buffer_size(&stream->input), STREAM_RECEIVE_SIZE);
     if (n == -1)
-    {
-      assert(errno == EAGAIN);
       break;
-    }
     total += n;
     stream->input.size += n;
   } while (n == STREAM_RECEIVE_SIZE);

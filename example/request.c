@@ -82,9 +82,9 @@ int main()
 
   reactor_construct();
   stream_construct(&r.stream, request_stream_callback, &r);
-  stream_open(&r.stream, r.fd[0], NULL, 1);
+  stream_open(&r.stream, r.fd[0], STREAM_WRITE, NULL);
   server_construct(&r.server, request_server_callback, &r);
-  server_accept(&r.server, r.fd[1], NULL);
+  server_accept(&r.server,r.fd[1], STREAM_READ, NULL);
   reactor_loop();
 
   stream_destruct(&r.stream);

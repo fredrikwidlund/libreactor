@@ -8,7 +8,7 @@
 
 #include "reactor.h"
 
-static void basic(void **state)
+static void test_timer(void **state)
 {
   timer t;
 
@@ -27,7 +27,7 @@ int main()
 {
   const struct CMUnitTest tests[] =
       {
-          cmocka_unit_test(basic)};
+          cmocka_unit_test(test_timer)};
 
   return cmocka_run_group_tests(tests, NULL, NULL);
 }

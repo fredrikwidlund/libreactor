@@ -19,12 +19,11 @@ src/reactor/utility.c \
 src/reactor/core.c \
 src/reactor/descriptor.c \
 src/reactor/stream.c \
-\
-src/reactor/server.c \
-src/reactor/net.c \
-src/reactor/http.c \
 src/reactor/timer.c \
-src/reactor/notify.c
+src/reactor/notify.c \
+src/reactor/http.c \
+src/reactor/net.c \
+src/reactor/server.c
 
 HEADER_FILES = \
 src/picohttpparser/picohttpparser.h \
@@ -42,16 +41,16 @@ src/reactor/utility.h \
 src/reactor/core.h \
 src/reactor/descriptor.h \
 src/reactor/stream.h \
-\
-src/reactor/server.h \
-src/reactor/net.h \
-src/reactor/http.h \
 src/reactor/timer.h \
-src/reactor/notify.h
+src/reactor/notify.h \
+src/reactor/http.h \
+src/reactor/net.h \
+src/reactor/server.h
 
 lib_LTLIBRARIES 		= libreactor.la
 libreactor_la_SOURCES 		= $(SOURCE_FILES) $(HEADER_FILES)
-libreactor_la_CFLAGS		= -std=gnu2x -g -O3 -flto -march=native -I$(srcdir)/src -fPIC
+libreactor_la_CFLAGS		= -std=gnu2x -g -O3 -flto -I$(srcdir)/src -fPIC
+#libreactor_la_CFLAGS		= -std=gnu2x -g -O3 -flto -march=native -I$(srcdir)/src -fPIC
 libreactor_la_LDFLAGS		= -static
 
 headerfilesdir 			= $(includedir)/reactor
@@ -97,12 +96,18 @@ test/maps \
 test/utility \
 test/core \
 test/descriptor \
-test/stream
+test/stream \
+test/timer \
+test/notify \
+test/http \
+test/net
 
 test_core_SOURCES		= test/core.c test/mock.c
 test_core_LDFLAGS 		= -Wl,--wrap=epoll_wait
 
 test_stream_LDADD		= $(LDADD) -lssl -lcrypto
+test_http_LDADD			= $(LDADD) -lssl -lcrypto
+test_net_LDADD			= $(LDADD) -lssl -lcrypto
 
 dist_noinst_SCRIPTS 		= test/valgrind.sh test/coverage.sh
 

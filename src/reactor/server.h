@@ -3,62 +3,56 @@
 
 #include <openssl/ssl.h>
 
-#include "data.h"
-#include "list.h"
 #include "reactor.h"
-#include "stream.h"
-#include "descriptor.h"
-#include "timer.h"
 
 enum
 {
-  SERVER_TRANSACTION_READ_REQUEST,
-  SERVER_TRANSACTION_HANDLE_REQUEST,
-  SERVER_TRANSACTION_ABORT
+  SERVER_REQUEST
 };
 
 enum
 {
-  SERVER_TRANSACTION
+  SERVER_REQUEST_READY
 };
 
 typedef struct server             server;
-typedef struct server_connection  server_connection;
-typedef struct server_transaction server_transaction;
+typedef struct server_request     server_request;
 
 struct server
 {
-  reactor_handler    handler;
-  descriptor         descriptor;
-  timer              timer;
-  char               date[30];
-  list               connections;
-  SSL_CTX           *ssl_ctx;
+  reactor_handler     handler;
+  descriptor          descriptor;
+  timer               timer;
+  SSL_CTX            *ssl_ctx;
+  list                requests;
 };
 
-struct server_transaction
+struct server_request
 {
-  size_t             ref;
-  int                state;
-  server_connection *connection;
-  http_request      *request;
-};
-
-struct server_connection
-{
-  server             *server;
+  size_t              ref;
+  int                 state;
+  int                 active;
+  reactor_handler     handler;
   stream              stream;
-  server_transaction *transaction;
+  data                method;
+  data                target;
+  http_field          fields[16];
+  size_t              fields_count;
 };
 
-data server_date(server *);
 void server_construct(server *, reactor_callback *, void *);
 void server_destruct(server *);
 void server_open(server *, int, SSL_CTX *);
-void server_accept(server *, int, SSL_CTX *);
 void server_shutdown(server *);
-void server_close(server *);
+void server_accept(server *, int);
 
+void server_close(server_request *);
+void server_hold(server_request *);
+void server_release(server_request *);
+void server_ok(server_request *, data, data);
+void server_not_found(server_request *);
+
+/*
 void server_transaction_ready(server_transaction *);
 void server_transaction_write(server_transaction *, data);
 void server_transaction_ok(server_transaction *, data, data);
@@ -66,5 +60,6 @@ void server_transaction_text(server_transaction *, data);
 void server_transaction_printf(server_transaction *, data, const char *, ...);
 void server_transaction_not_found(server_transaction *);
 void server_transaction_disconnect(server_transaction *);
+*/
 
 #endif /* REACTOR_SERVER_H_INCLUDED */

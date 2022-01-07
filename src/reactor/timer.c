@@ -51,7 +51,7 @@ void timer_set(timer *timer, uint64_t t0, uint64_t ti)
   {
     fd = timerfd_create(CLOCK_REALTIME, TFD_NONBLOCK | TFD_CLOEXEC);
     assert(fd != -1);
-    descriptor_open(&timer->descriptor, fd, 0);
+    descriptor_open(&timer->descriptor, fd, DESCRIPTOR_READ);
   }
   t0 += t0 == 0;
   e = timerfd_settime(descriptor_fd(&timer->descriptor), 0, (struct itimerspec[]) {{

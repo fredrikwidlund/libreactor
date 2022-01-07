@@ -57,7 +57,7 @@ static int transfer(int from, int to, int ssl, size_t size)
   if (ssl)
   {
     client_ctx = SSL_CTX_new(TLS_client_method());
-    server_ctx = net_ssl_context("test/files/cert.pem", "test/files/key.pem");
+    server_ctx = net_ssl_server_context("test/files/cert.pem", "test/files/key.pem");
     assert(client_ctx && server_ctx);
   }
  

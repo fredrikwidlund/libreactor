@@ -31,14 +31,13 @@ extern "C" {
 #include "reactor/utility.h"
 #include "reactor/string.h"
 #include "reactor/core.h"
-  
 #include "reactor/descriptor.h"
 #include "reactor/stream.h"
 #include "reactor/net.h"
 #include "reactor/http.h"
-#include "reactor/server.h"
 #include "reactor/timer.h"
 #include "reactor/notify.h"
+#include "reactor/server.h"
 
 #ifdef __cplusplus
 }

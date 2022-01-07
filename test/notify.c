@@ -19,7 +19,7 @@ static void callback(reactor_event *event)
   free(n);
 }
 
-static void notify_basic(void **state)
+static void test_notify_basic(void **state)
 {
   notify n;
 
@@ -45,7 +45,7 @@ static void notify_basic(void **state)
   reactor_destruct();
 }
 
-static void notify_abort(void **state)
+static void test_notify_abort(void **state)
 {
   notify *n = malloc(sizeof *n);;
 
@@ -64,8 +64,8 @@ int main()
 {
   const struct CMUnitTest tests[] =
     {
-      cmocka_unit_test(notify_basic),
-      cmocka_unit_test(notify_abort)
+      cmocka_unit_test(test_notify_basic),
+      cmocka_unit_test(test_notify_abort)
     };
 
   return cmocka_run_group_tests(tests, NULL, NULL);

@@ -76,11 +76,11 @@ int notify_watch(notify *notify, char *path, uint32_t mask)
   int fd, wd;
   notify_entry *entry;
 
-  if (descriptor_fd(&notify->descriptor) == -1)
+  if (!descriptor_active(&notify->descriptor))
   {
     fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
     assert(fd != -1);
-    descriptor_open(&notify->descriptor, fd, 0);
+    descriptor_open(&notify->descriptor, fd, DESCRIPTOR_READ);
   }
 
   wd = inotify_add_watch(descriptor_fd(&notify->descriptor), path, mask);

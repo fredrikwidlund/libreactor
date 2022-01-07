@@ -1,5 +1,3 @@
-* include dynamic
-* rework pool?
-* optional dependency on ssl and pthread
 * finalise optimised server
+* rework pool?
 * client
