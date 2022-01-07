@@ -10,9 +10,12 @@ enum
   SERVER_REQUEST
 };
 
-enum
+enum server_state
 {
-  SERVER_REQUEST_READY
+  SERVER_REQUEST_NEED_MORE_DATA,
+  SERVER_REQUEST_READ,
+  SERVER_REQUEST_HANDLING,
+  SERVER_REQUEST_ABORT
 };
 
 typedef struct server             server;
@@ -30,10 +33,11 @@ struct server
 struct server_request
 {
   size_t              ref;
-  int                 state;
-  int                 active;
+  enum server_state   state;
+  int                 event_triggered;
   reactor_handler     handler;
   stream              stream;
+  data                data;
   data                method;
   data                target;
   http_field          fields[16];
@@ -49,8 +53,10 @@ void server_accept(server *, int);
 void server_close(server_request *);
 void server_hold(server_request *);
 void server_release(server_request *);
+void server_respond(server_request *, data, data, data);
 void server_ok(server_request *, data, data);
 void server_not_found(server_request *);
+void server_bad_request(server_request *);
 
 /*
 void server_transaction_ready(server_transaction *);

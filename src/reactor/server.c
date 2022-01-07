@@ -43,148 +43,60 @@ static void server_date_update(void)
   memcpy(server_date_string + 8, months[tm.tm_mon], 3);
 }
 
-/* server_transaction */
-
-/*
-static server_transaction *server_transaction_new(server_connection *connection)
-{
-  server_transaction *transaction = malloc(sizeof *transaction);
-
-  *transaction = (server_transaction) {.ref = 1, .state = SERVER_TRANSACTION_READ_REQUEST, .connection = connection};
-  return transaction;
-}
-
-static void server_transaction_hold(server_transaction *transaction)
-{
-  transaction->ref++;
-}
-
-static void server_transaction_release(server_transaction *transaction)
-{
-  transaction->ref--;
-  if (!transaction->ref)
-    free(transaction);
-}
-
-static void server_transaction_update(server_transaction *transaction)
-{
-  data data;
-  ssize_t n;
-  http_request request;
-
-  if (transaction->state != SERVER_TRANSACTION_READ_REQUEST)
-    return;
-
-  data = stream_read(&transaction->connection->stream);
-  n = http_request_parse(&request, data);
-  if (reactor_likely(n > 0))
-  {
-    transaction->state = SERVER_TRANSACTION_HANDLE_REQUEST;
-    transaction->request = &request;
-    server_transaction_hold(transaction);
-    reactor_dispatch(&transaction->connection->server->handler, SERVER_TRANSACTION, (uintptr_t) transaction);
-    if (transaction->connection)
-    {
-      stream_consume(&transaction->connection->stream, n);
-      stream_flush(&transaction->connection->stream);
-    }
-    server_transaction_release(transaction);
-  }
-  else if (n == -1)
-    server_connection_release(transaction->connection);
-}
-
-void server_transaction_ready(server_transaction *transaction)
-{
-  transaction->state = SERVER_TRANSACTION_READ_REQUEST;
-}
-
-void server_transaction_write(server_transaction *transaction, data data)
-{
-  stream_write(&transaction->connection->stream, data);
-}
-
-void server_transaction_ok(server_transaction *transaction, data type, data body)
-{
-  http_write_ok_response(&transaction->connection->stream, server_date(transaction->connection->server), type, body);
-  server_transaction_ready(transaction);
-}
-
-void server_transaction_text(server_transaction *transaction, data text)
-{
-  http_write_ok_response(&transaction->connection->stream, server_date(transaction->connection->server),
-                         data_string("text/plain"), text);
-  server_transaction_ready(transaction);
-}
-
-void server_transaction_printf(server_transaction *transaction, data type, const char *format, ...)
-{
-  va_list ap;
-  char *body;
-  int n;
-
-  va_start(ap, format);
-  n = vasprintf(&body, format, ap);
-  server_transaction_ok(transaction, type, data_construct(body, n));
-  va_end(ap);
-  free(body);
-}
-
-void server_transaction_not_found(server_transaction *transaction)
-{
-  http_write_response(&transaction->connection->stream, data_string("404 Not Found"),
-                      server_date(transaction->connection->server), data_null(), data_null());
-  server_transaction_ready(transaction);
-}
-
-void server_transaction_disconnect(server_transaction *transaction)
-{
-  server_connection_release(transaction->connection);
-}
-
-*/
-
-/* server_connection */
-
-/*
-static void server_connection_release(server_connection *connection)
-{
-  connection->transaction->state = SERVER_TRANSACTION_ABORT;
-  connection->transaction->connection = NULL;
-  server_transaction_release(connection->transaction);
-  stream_destruct(&connection->stream);
-  list_erase(connection, NULL);
-}
-
-*/
-
-/* server */
-
-
 /* common routines */
 
-static void server_update(server_request *request)
+static void server_request_read(server_request *request)
 {
   ssize_t n;
 
+  if (data_empty(request->data))
+  {
+    request->state = SERVER_REQUEST_NEED_MORE_DATA;
+    return;
+  }
+
   request->fields_count = sizeof request->fields / sizeof request->fields[0];
-  n = http_read_request(&request->stream, &request->method, &request->target, request->fields, &request->fields_count);
+  n = http_read_request_data(request->data, &request->method, &request->target, request->fields, &request->fields_count);
   switch (n)
   {
   case -2:
-    server_close(request);
-    return;
+    request->state = SERVER_REQUEST_HANDLING;
+    server_hold(request);
+    server_bad_request(request);
+    break;
   case -1:
-    return;
+    request->state = SERVER_REQUEST_NEED_MORE_DATA;
+    break;
   default:
-    server_hold(request); // hold to allow for consume
-    server_hold(request); // hold for user
+    request->state = SERVER_REQUEST_HANDLING;
+    server_hold(request);
+    request->data = data_consume(request->data, n);
     reactor_dispatch(&request->handler, SERVER_REQUEST, (uintptr_t) request);
-    if (request->active)
-      stream_consume(&request->stream, n);
-    server_release(request); // release consume hold
     break;
   }
+}
+
+static void server_request_update(server_request *request)
+{
+  if (request->state != SERVER_REQUEST_NEED_MORE_DATA || !request->stream.input.size)
+    return;
+
+  server_hold(request);
+  request->state = SERVER_REQUEST_READ;
+  request->event_triggered = 1;
+  request->data = data_construct(request->stream.input.data, request->stream.input.size);
+
+  while (request->state == SERVER_REQUEST_READ)
+    server_request_read(request);
+
+  if (request->state != SERVER_REQUEST_ABORT)
+  {
+    stream_consume(&request->stream, request->stream.input.size - request->data.size);
+    stream_flush(&request->stream);
+  }
+
+  request->event_triggered = 0;
+  server_release(request);
 }
 
 static void server_request_callback(reactor_event *event)
@@ -194,7 +106,7 @@ static void server_request_callback(reactor_event *event)
   switch (event->type)
   {
   case STREAM_READ:
-    server_update(request);
+    server_request_update(request);
     break;
   default:
   case STREAM_CLOSE:
@@ -216,7 +128,7 @@ static void server_socket_accept(server *server, int fd)
   server_request *request;
 
   request = list_push_back(&server->requests, NULL, sizeof *request);
-  *request = (server_request) {.ref = 1, .handler = server->handler, .active = 1};
+  *request = (server_request) {.ref = 1, .handler = server->handler, .state = SERVER_REQUEST_NEED_MORE_DATA};
   stream_construct(&request->stream, server_request_callback, request);
   stream_open(&request->stream, fd, STREAM_READ, NULL);
 }
@@ -249,8 +161,6 @@ void server_ssl_accept(server *server, int fd)
 {
   server_request *request;
 
-  assert(server_ssl_activated == 1);
-  
   request = list_push_back(&server->requests, NULL, sizeof *request);
   *request = (server_request) {.ref = 1, .handler = server->handler};
   stream_construct(&request->stream, server_request_callback, request);
@@ -262,7 +172,6 @@ static void server_ssl_descriptor_callback(reactor_event *event)
   server *server = event->state;
   int fd;
 
-  assert(server_ssl_activated == 1);
   assert(event->type == DESCRIPTOR_READ);
   while (1)
   {
@@ -275,10 +184,9 @@ static void server_ssl_descriptor_callback(reactor_event *event)
 
 static void server_ssl_open(server *server, int fd, SSL_CTX *ssl_ctx)
 {
-  server_ssl_activated = 1; 
   server->ssl_ctx = ssl_ctx;
   timer_set(&server->timer, 0, 1000000000);
-  descriptor_construct(&server->descriptor, server_ssl_descriptor_callback, server);  
+  descriptor_construct(&server->descriptor, server_ssl_descriptor_callback, server);
   descriptor_open(&server->descriptor, fd, DESCRIPTOR_READ);
 }
 
@@ -320,7 +228,7 @@ void server_shutdown(server *server)
     server_release(request);
     request = next;
   }
-  
+
   timer_clear(&server->timer);
   descriptor_close(&server->descriptor);
 }
@@ -337,9 +245,9 @@ void server_accept(server *server, int fd)
 
 void server_close(server_request *request)
 {
-  if (request->active)
+  if (request->state != SERVER_REQUEST_ABORT)
   {
-    request->active = 0;
+    request->state = SERVER_REQUEST_ABORT;
     stream_close(&request->stream);
   }
   server_release(request);
@@ -360,22 +268,40 @@ void server_release(server_request *request)
   list_erase(request, NULL);
 }
 
-void server_ok(server_request *request, data type, data body)
+void server_respond(server_request *request, data status, data type, data body)
 {
-  if (request->active)
+  if (request->state == SERVER_REQUEST_HANDLING)
   {
-    http_write_response(&request->stream, data_string("200 OK"), server_date(), type, body);
-    stream_flush(&request->stream);
+    http_write_response(&request->stream, status, server_date(), type, body);
+    if (request->event_triggered)
+      request->state = SERVER_REQUEST_READ;
+    else
+    {
+      request->state = SERVER_REQUEST_NEED_MORE_DATA;
+      stream_flush(&request->stream);
+      server_request_update(request);
+    }
   }
   server_release(request);
 }
 
+void server_ok(server_request *request, data type, data body)
+{
+  server_respond(request, data_string("200 OK"), type, body);
+}
+
 void server_not_found(server_request *request)
 {
-  if (request->active)
+  server_respond(request, data_string("404 Not Found"), data_null(), data_null());
+}
+
+void server_bad_request(server_request *request)
+{
+  if (request->state == SERVER_REQUEST_HANDLING)
   {
-    http_write_response(&request->stream, data_string("404 Not Found"), server_date(), data_null(), data_null());
+    http_write_response(&request->stream, data_string("400 Bad Request"), server_date(), data_null(), data_null());
     stream_flush(&request->stream);
+    server_close(request);
   }
   server_release(request);
 }

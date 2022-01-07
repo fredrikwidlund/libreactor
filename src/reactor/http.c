@@ -38,9 +38,14 @@ data http_field_lookup(http_field *fields, size_t fields_count, data name)
 
 ssize_t http_read_request(stream *stream, data *method, data *target, http_field *fields, size_t *fields_count)
 {
+  return http_read_request_data(data_construct(stream->input.data, stream->input.size), method, target, fields, fields_count);
+}
+
+ssize_t http_read_request_data(data buffer, data *method, data *target, http_field *fields, size_t *fields_count)
+{
   int n, minor_version;
 
-  n = phr_parse_request(stream->input.data, stream->input.size,
+  n = phr_parse_request(data_base(buffer), data_size(buffer),
                         (const char **) &method->base, &method->size,
                         (const char **) &target->base, &target->size,
                         &minor_version,
@@ -92,7 +97,7 @@ ssize_t http_read_response(stream *stream, int *status_code, data *status, http_
                          (const char **) &status->base, &status->size,
                          (struct phr_header *) fields, fields_count, 0);
   asm volatile("": : :"memory");
-  return n;  
+  return n;
 }
 
 void http_write_response(stream *stream, data status, data date, data type, data body)

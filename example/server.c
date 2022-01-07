@@ -11,7 +11,7 @@ static void timeout(reactor_event *event)
 {
   struct task *task = event->state;
   
-  server_ok(task->request, data_string("text/plain"), data_string("Hello, World!"));
+  server_ok(task->request, data_string("text/plain"), data_string("Hello from the future, World!"));
   timer_destruct(&task->timer);
   free(task);
 }
@@ -22,8 +22,12 @@ static void callback(reactor_event *event)
   server_request *request = (server_request *) event->data;
   
   struct task *task;
-  
-  if (data_equal(request->target, data_string("/wait")))
+
+  if (data_equal(request->target, data_string("/hello")))
+  {
+    server_ok(request, data_string("text/plain"), data_string("Hello, World!"));
+  }
+  else if (data_equal(request->target, data_string("/wait")))
   {
     task = malloc(sizeof *task);
     task->request = request;
@@ -32,13 +36,13 @@ static void callback(reactor_event *event)
   }
   else if (data_equal(request->target, data_string("/close")))
   {
-    server_release(request);
     server_close(request);
+    server_release(request);
   }
   else if (data_equal(request->target, data_string("/shutdown")))
   {
-    server_release(request);
     server_shutdown(server);
+    server_release(request);
   }
   else
     server_not_found(request);

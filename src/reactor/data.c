@@ -62,3 +62,8 @@ size_t data_offset(data d1, data d2)
 {
   return (uintptr_t) data_base(d2) - (uintptr_t) data_base(d1);
 }
+
+data data_consume(data data, size_t size)
+{
+  return data_construct((char *) data.base + size, data.size - size);
+}

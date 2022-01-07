@@ -30,6 +30,7 @@ void       http_field_push(pointer *, http_field);
 data       http_field_lookup(http_field *, size_t, data);
 
 ssize_t    http_read_request(stream *, data *, data *, http_field *, size_t *);
+ssize_t    http_read_request_data(data, data *, data *, http_field *, size_t *);
 void       http_write_request(stream *, data, data, data, data, data);
 ssize_t    http_read_response(stream *, int *, data *, http_field *, size_t *);
 void       http_write_response(stream *, data, data, data, data);

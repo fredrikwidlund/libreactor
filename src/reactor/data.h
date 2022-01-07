@@ -24,5 +24,6 @@ int         data_empty(data);
 int         data_equal(data, data);
 int         data_prefix(data, data);
 size_t      data_offset(data, data);
+data        data_consume(data, size_t);
 
 #endif /* REACTOR_DATA_H_INCLUDED */
