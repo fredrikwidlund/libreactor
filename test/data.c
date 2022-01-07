@@ -25,6 +25,7 @@ static void test_data(__attribute__((unused)) void **arg)
   assert_true(data_prefix(data_string("te"), d));
   assert_false(data_prefix(data_string("tet"), d));
   assert_false(data_prefix(data_string("test2"), d));
+  assert_true(data_equal(data_consume(d, 2), data_string("st")));
 
   /* select */
   e = data_select(d, 2, 2);
