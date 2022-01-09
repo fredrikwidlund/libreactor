@@ -76,7 +76,6 @@ indent:
 
 AM_CFLAGS 			= -std=gnu2x -mno-sse -O0 -g -ftest-coverage -fprofile-arcs -I$(srcdir)/src -DGCOV_BUILD -DUNIT_TESTING
 LDADD 				= -L. libreactor_test.a -lcmocka
-#LDADD 				= -L. libreactor_test.a -lcmocka -lssl -lcrypto
 
 check_LIBRARIES 		= libreactor_test.a
 libreactor_test_a_SOURCES 	= $(SOURCE_FILES) $(HEADER_FILES)
@@ -100,7 +99,8 @@ test/stream \
 test/timer \
 test/notify \
 test/http \
-test/net
+test/net \
+test/server
 
 test_core_SOURCES		= test/core.c test/mock.c
 test_core_LDFLAGS 		= -Wl,--wrap=epoll_wait
@@ -108,6 +108,7 @@ test_core_LDFLAGS 		= -Wl,--wrap=epoll_wait
 test_stream_LDADD		= $(LDADD) -lssl -lcrypto
 test_http_LDADD			= $(LDADD) -lssl -lcrypto
 test_net_LDADD			= $(LDADD) -lssl -lcrypto
+test_server_LDADD		= $(LDADD) -lssl -lcrypto
 
 dist_noinst_SCRIPTS 		= test/valgrind.sh test/coverage.sh
 

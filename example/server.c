@@ -10,7 +10,7 @@ struct task
 static void timeout(reactor_event *event)
 {
   struct task *task = event->state;
-  
+
   server_ok(task->request, data_string("text/plain"), data_string("Hello from the future, World!"));
   timer_destruct(&task->timer);
   free(task);
@@ -20,7 +20,6 @@ static void callback(reactor_event *event)
 {
   server *server = event->state;
   server_request *request = (server_request *) event->data;
-  
   struct task *task;
 
   if (data_equal(request->target, data_string("/hello")))
@@ -51,7 +50,7 @@ static void callback(reactor_event *event)
 int main()
 {
   server server;
-  
+
   reactor_construct();
   server_construct(&server, callback, &server);
   server_open(&server, net_socket(net_resolve("127.0.0.1", "80", AF_INET, SOCK_STREAM, AI_PASSIVE)), NULL);

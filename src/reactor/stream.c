@@ -15,8 +15,6 @@ static __thread int stream_ssl_activated = 0;
 
 /* stream socket/pipe operations */
 
-
-#include <err.h>
 static size_t stream_socket_read(stream *stream)
 {
   ssize_t n;
@@ -86,7 +84,7 @@ static void stream_socket_callback(reactor_event *event)
       stream_socket_update(stream);
       reactor_dispatch(&stream->handler, STREAM_WRITE, 0);
       break;
-    }  
+    }
     stream_socket_update(stream);
     break;
   default:
@@ -104,13 +102,15 @@ static void stream_socket_open(stream *stream, int fd)
 
 /* stream ssl operations */
 
+static int stream_ssl_mask(stream *stream)
+{
+  return (stream->mask & STREAM_READ) |
+    ((stream->ssl_state == SSL_ERROR_WANT_WRITE) | buffer_size(&stream->output) | stream->notify ? STREAM_WRITE : 0);
+}
+
 static void stream_ssl_update(stream *stream)
 {
-  assert(stream_ssl_activated);
-
-  descriptor_mask(&stream->descriptor,
-                  DESCRIPTOR_READ |
-                  ((stream->ssl_state == SSL_ERROR_WANT_WRITE) | (buffer_size(&stream->output) > 0) ? DESCRIPTOR_WRITE : 0));
+  descriptor_mask(&stream->descriptor, stream_ssl_mask(stream));
 }
 
 static size_t stream_ssl_read(stream *stream)
@@ -165,7 +165,7 @@ static void stream_ssl_callback(reactor_event *event)
       stream_ssl_update(stream);
       reactor_dispatch(&stream->handler, STREAM_WRITE, 0);
       break;
-    }  
+    }
     stream_ssl_update(stream);
     break;
   default:
@@ -189,7 +189,7 @@ static void stream_ssl_open(stream *stream, int fd, SSL_CTX *ssl_ctx)
     SSL_set_connect_state(stream->ssl);
   SSL_set_mode(stream->ssl, SSL_MODE_ENABLE_PARTIAL_WRITE | SSL_MODE_ACCEPT_MOVING_WRITE_BUFFER);
   descriptor_construct(&stream->descriptor, stream_ssl_callback, stream);
-  descriptor_open(&stream->descriptor, fd, DESCRIPTOR_WRITE);
+  descriptor_open(&stream->descriptor, fd, stream_ssl_mask(stream));
 }
 
 /* stream */
@@ -242,10 +242,10 @@ void stream_close(stream *stream)
 {
   if (!descriptor_active(&stream->descriptor))
     return;
-  
+
   if (stream_ssl_activated)
     SSL_free(stream->ssl);
-  
+
   stream->notify = 0;
   descriptor_close(&stream->descriptor);
   buffer_clear(&stream->input);

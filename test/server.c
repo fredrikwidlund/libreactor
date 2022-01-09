@@ -15,10 +15,21 @@ struct requests
   char *request;
   int code;
   int partial;
-  int fd[2];
+  int client_fd;
   stream client;
+  int server_fd;
   server server;
+  timer timer;
 };
+
+static void requests_timer_callback(reactor_event *event)
+{
+  struct requests *r = event->state;
+
+  stream_write(&r->client, data_construct(r->request, strlen(r->request)));
+  stream_flush(&r->client);
+  timer_destruct(&r->timer);
+}
 
 static void requests_client_callback(reactor_event *event)
 {
@@ -33,9 +44,9 @@ static void requests_client_callback(reactor_event *event)
       assert_true((size_t) r->partial < strlen(r->request));
       stream_write(&r->client, data_construct(r->request, r->partial));
       r->request += r->partial;
-      r->partial = 0;
       stream_flush(&r->client);
-      stream_write_notify(&r->client);
+      timer_construct(&r->timer, requests_timer_callback, r);
+      timer_set(&r->timer, 1000, 0);
     }
     else
     {
@@ -57,66 +68,117 @@ static void requests_client_callback(reactor_event *event)
       break;
     }
     stream_close(&r->client);
-    server_close(&r->server);
+    server_shutdown(&r->server);
     break;
   case STREAM_CLOSE:
     assert_int_equal(r->code, 0);
     stream_close(&r->client);
-    server_close(&r->server);
+    server_shutdown(&r->server);
     break;
   }
 }
 
-static void requests_server_callback(reactor_event *event)
+struct task
 {
-  server_transaction *t = (server_transaction *) event->data;
-  http_request *r = t->request;
+  server_request *request;
+  timer           timer;
+};
 
-  if (data_equal(r->target, data_string("/manual")))
-  {
-    server_transaction_write(t, data_string("HTTP/1.1 200 OK\r\n\r\n"));
-    server_transaction_ready(t);
-  }
-  else if (data_equal(r->target, data_string("/text")))
-    server_transaction_text(t, data_string("hi there\n"));
-  else if (data_equal(r->target, data_string("/")))
-    server_transaction_ok(t, data_string("plain/text"), data_string("ok"));
-  else if (data_equal(r->target, data_string("/printf")))
-    server_transaction_printf(t, data_string("plain/text"), "%d", 42);
-  else if (data_equal(r->target, data_string("/close")))
-    server_transaction_disconnect(t);
-  else
-    server_transaction_not_found(t);
+static void timeout(reactor_event *event)
+{
+  struct task *task = event->state;
+
+  server_ok(task->request, data_string("text/plain"), data_string("Hello from the future, World!"));
+  timer_destruct(&task->timer);
+  free(task);
 }
 
-static void requests_run(char *request, int code, int partial)
+static void requests_server_callback(reactor_event *event)
+{
+  server_request *request = (server_request *) event->data;
+  struct task *task;
+
+  if (data_equal(request->target, data_string("/")))
+    server_ok(request, data_string("plain/text"), data_string("hello"));
+  else if (data_equal(request->target, data_string("/wait")))
+  {
+    task = malloc(sizeof *task);
+    task->request = request;
+    timer_construct(&task->timer, timeout, task);
+    timer_set(&task->timer, 1000000000, 0);
+  }
+  else if (data_equal(request->target, data_string("/close")))
+  {
+    server_close(request);
+    /* below should be ignored now */
+    server_close(request);
+    server_hold(request);
+    server_ok(request, data_string("plain/text"), data_string("hello"));
+    server_hold(request);
+    server_bad_request(request);
+  }
+  else if (data_equal(request->target, data_string("/bad")))
+  {
+    server_bad_request(request);
+  }
+  else
+    server_not_found(request);
+}
+
+static void requests_run(char *request, int code, int partial, int ssl)
 {
   struct requests r = {.request = request, .code = code, .partial = partial};
+  SSL_CTX *client_ssl_ctx = NULL, *server_ssl_ctx = NULL;
 
-  assert_int_equal(socketpair(AF_UNIX, SOCK_STREAM, 0, r.fd), 0);
+  if (ssl)
+  {
+    client_ssl_ctx = SSL_CTX_new(TLS_client_method());
+    assert_true(client_ssl_ctx);
+    server_ssl_ctx = net_ssl_server_context("test/files/cert.pem", "test/files/key.pem");
+    assert_true(server_ssl_ctx);
+  }
+
+  r.server_fd = net_socket(net_resolve("127.0.0.1", "12345", AF_INET, SOCK_STREAM, AI_PASSIVE));
+  assert_true(r.server_fd >= 0);
+  r.client_fd = net_socket(net_resolve("127.0.0.1", "12345", AF_INET, SOCK_STREAM, 0));
+  assert_true(r.client_fd >= 0);
+
   reactor_construct();
   stream_construct(&r.client, requests_client_callback, &r);
-  stream_open(&r.client, r.fd[0], NULL, 1);
+  stream_open(&r.client, r.client_fd, STREAM_READ | STREAM_WRITE, client_ssl_ctx);
+  stream_notify(&r.client);
   server_construct(&r.server, requests_server_callback, &r);
-  server_accept(&r.server, r.fd[1], NULL);
-  usleep(100000);
+  server_open(&r.server, r.server_fd, server_ssl_ctx);
   reactor_loop();
   stream_destruct(&r.client);
   server_destruct(&r.server);
   reactor_destruct();
+
+  SSL_CTX_free(client_ssl_ctx);
+  SSL_CTX_free(server_ssl_ctx);
 }
 
 static void test_requests(void **arg)
 {
   (void) arg;
-  requests_run("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n", 200, 0);
-  requests_run("GET /manual HTTP/1.1\r\nHost: localhost\r\n\r\n", 200, 0);
-  requests_run("GET /doesntexit HTTP/1.1\r\nHost: localhost\r\n\r\n", 404, 0);
-  requests_run("invalid\r\n\r\n", 0, 0);
-  requests_run("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n", 200, 4);
-  requests_run("GET /text HTTP/1.1\r\nHost: localhost\r\n\r\n", 200, 0);
-  requests_run("GET /printf HTTP/1.1\r\nHost: localhost\r\n\r\n", 200, 0);
-  requests_run("GET /close HTTP/1.1\r\nHost: localhost\r\n\r\n", 0, 0);
+  requests_run("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n", 200, 0, 0);
+  requests_run("GET /wait HTTP/1.1\r\nHost: localhost\r\n\r\nxxxxxxxxxxxxxxx", 200, 39, 0);
+  requests_run("GET /wait HTTP/1.1\r\nHost: localhost\r\n\r\n", 200, 0, 0);
+  requests_run("GET /doesntexit HTTP/1.1\r\nHost: localhost\r\n\r\n", 404, 0, 0);
+  requests_run("invalid\r\n\r\n", 400, 0, 0);
+  requests_run("GET /close HTTP/1.1\r\nHost: localhost\r\n\r\n", 0, 0, 0);
+  requests_run("GET /bad HTTP/1.1\r\nHost: localhost\r\n\r\n", 400, 0, 0);
+}
+
+static void test_requests_ssl(void **arg)
+{
+  (void) arg;
+  requests_run("GET / HTTP/1.1\r\nHost: localhost\r\n\r\n", 200, 0, 1);
+  requests_run("GET /wait HTTP/1.1\r\nHost: localhost\r\n\r\nxxxxxxxxxxxxxxx", 200, 39, 1);
+  requests_run("GET /wait HTTP/1.1\r\nHost: localhost\r\n\r\n", 200, 0, 1);
+  requests_run("GET /doesntexit HTTP/1.1\r\nHost: localhost\r\n\r\n", 404, 0, 1);
+  requests_run("invalid\r\n\r\n", 400, 0, 1);
+  requests_run("GET /close HTTP/1.1\r\nHost: localhost\r\n\r\n", 0, 0, 1);
 }
 
 static void test_edge_cases(void **arg)
@@ -124,19 +186,45 @@ static void test_edge_cases(void **arg)
   int fd[2];
   stream client;
   server server;
+  SSL_CTX *server_ssl_ctx;
 
   (void) arg;
-
   /* disconnecting client */
   assert_int_equal(socketpair(AF_UNIX, SOCK_STREAM, 0, fd), 0);
   reactor_construct();
   stream_construct(&client, NULL, NULL);
-  stream_open(&client, fd[0], NULL, 1);
+  stream_open(&client, fd[0], STREAM_WRITE, NULL);
   server_construct(&server, NULL, NULL);
-  server_accept(&server, fd[1], NULL);
+  server_accept(&server, fd[1]);
   stream_close(&client);
   reactor_loop_once();
   stream_destruct(&client);
+  server_destruct(&server);
+  reactor_destruct();
+
+  /* accept tls */
+  assert_int_equal(socketpair(AF_UNIX, SOCK_STREAM, 0, fd), 0);
+  reactor_construct();
+  stream_construct(&client, NULL, NULL);
+  stream_open(&client, fd[0], STREAM_WRITE, NULL);
+  server_construct(&server, NULL, NULL);
+  server_ssl_ctx = net_ssl_server_context("test/files/cert.pem", "test/files/key.pem");
+  assert_true(server_ssl_ctx);
+  server.ssl_ctx = server_ssl_ctx;
+  server_accept(&server, fd[1]);
+  stream_close(&client);
+  stream_destruct(&client);
+  server_destruct(&server);
+  reactor_destruct();
+  SSL_CTX_free(server_ssl_ctx);
+
+  /* close already closed server */
+  fd[0] = dup(0);
+  reactor_construct();
+  server_construct(&server, NULL, NULL);
+  server_open(&server, fd[0], NULL);
+  server_shutdown(&server);
+  server_shutdown(&server);
   server_destruct(&server);
   reactor_destruct();
 
@@ -155,7 +243,7 @@ static void test_edge_cases(void **arg)
   server_construct(&server, NULL, NULL);
   server_open(&server, fd[1], NULL);
   stream_construct(&client, NULL, NULL);
-  stream_open(&client, fd[0], NULL, 1);
+  stream_open(&client, fd[0], STREAM_WRITE, NULL);
   reactor_loop_once();
   server_shutdown(&server);
   reactor_loop_once();
@@ -169,6 +257,7 @@ int main()
   const struct CMUnitTest tests[] =
       {
           cmocka_unit_test(test_requests),
+          cmocka_unit_test(test_requests_ssl),
           cmocka_unit_test(test_edge_cases)};
 
   return cmocka_run_group_tests(tests, NULL, NULL);

@@ -15,7 +15,7 @@ enum server_state
   SERVER_REQUEST_NEED_MORE_DATA,
   SERVER_REQUEST_READ,
   SERVER_REQUEST_HANDLING,
-  SERVER_REQUEST_ABORT
+  SERVER_REQUEST_CLOSED
 };
 
 typedef struct server             server;
@@ -24,6 +24,7 @@ typedef struct server_request     server_request;
 struct server
 {
   reactor_handler     handler;
+  int                 is_open;
   descriptor          descriptor;
   timer               timer;
   SSL_CTX            *ssl_ctx;

@@ -38,7 +38,6 @@ void  stream_destruct(stream *);
 void  stream_open(stream *, int, int, SSL_CTX *);
 void  stream_notify(stream *);
 void  stream_close(stream *);
-void  stream_write_notify(stream *);
 data  stream_read(stream *);
 void  stream_consume(stream *, size_t);
 void  stream_write(stream *, data);

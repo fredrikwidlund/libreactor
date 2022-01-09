@@ -42,7 +42,7 @@ static void transfer_reader(reactor_event *event)
   stream_consume(&state->to, data_size(data));
   state->remaining -= data_size(data);
   if (!state->remaining && state->notified)
-  { 
+  {
     stream_destruct(&state->from);
     stream_destruct(&state->to);
   }
@@ -60,13 +60,13 @@ static int transfer(int from, int to, int ssl, size_t size)
     server_ctx = net_ssl_server_context("test/files/cert.pem", "test/files/key.pem");
     assert(client_ctx && server_ctx);
   }
- 
+
   memset(data, 0, size);
   from = dup(from);
   to = dup(to);
   assert_int_equal(fcntl(from, F_SETFL, O_NONBLOCK), 0);
   assert_int_equal(fcntl(to, F_SETFL, O_NONBLOCK), 0);
-  
+
   reactor_construct();
   stream_construct(&state.from, transfer_writer, &state);
   stream_open(&state.from, from, STREAM_WRITE, client_ctx);
@@ -87,7 +87,7 @@ static int transfer(int from, int to, int ssl, size_t size)
 static void test_stream_transfer(__attribute__((unused)) void **arg)
 {
   int fd[2];
-  
+
   assert_int_equal(socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, fd), 0);
   assert_int_equal(transfer(fd[1], fd[0], 0, 1), 0);
   assert_int_equal(transfer(fd[1], fd[0], 0, 1024), 0);

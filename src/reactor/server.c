@@ -18,7 +18,7 @@
 #include "http.h"
 #include "server.h"
 
-static int server_ssl_activated = 0;
+static __thread int server_ssl_activated = 0;
 
 /* server date */
 
@@ -60,12 +60,12 @@ static void server_request_read(server_request *request)
   switch (n)
   {
   case -2:
+    request->state = SERVER_REQUEST_NEED_MORE_DATA;
+    break;
+  case -1:
     request->state = SERVER_REQUEST_HANDLING;
     server_hold(request);
     server_bad_request(request);
-    break;
-  case -1:
-    request->state = SERVER_REQUEST_NEED_MORE_DATA;
     break;
   default:
     request->state = SERVER_REQUEST_HANDLING;
@@ -82,14 +82,13 @@ static void server_request_update(server_request *request)
     return;
 
   server_hold(request);
-  request->state = SERVER_REQUEST_READ;
   request->event_triggered = 1;
   request->data = data_construct(request->stream.input.data, request->stream.input.size);
-
+  request->state = SERVER_REQUEST_READ;
   while (request->state == SERVER_REQUEST_READ)
     server_request_read(request);
 
-  if (request->state != SERVER_REQUEST_ABORT)
+  if (request->state != SERVER_REQUEST_CLOSED)
   {
     stream_consume(&request->stream, request->stream.input.size - request->data.size);
     stream_flush(&request->stream);
@@ -157,7 +156,7 @@ static void server_socket_open(server *server, int fd)
 
 /* ssl socket routines */
 
-void server_ssl_accept(server *server, int fd)
+static void server_ssl_accept(server *server, int fd)
 {
   server_request *request;
 
@@ -184,6 +183,7 @@ static void server_ssl_descriptor_callback(reactor_event *event)
 
 static void server_ssl_open(server *server, int fd, SSL_CTX *ssl_ctx)
 {
+  server_ssl_activated = 1;
   server->ssl_ctx = ssl_ctx;
   timer_set(&server->timer, 0, 1000000000);
   descriptor_construct(&server->descriptor, server_ssl_descriptor_callback, server);
@@ -203,10 +203,7 @@ void server_construct(server *server, reactor_callback *callback, void *state)
 void server_destruct(server *server)
 {
   server_shutdown(server);
-  if (server_ssl_activated)
-    SSL_CTX_free(server->ssl_ctx);
   timer_destruct(&server->timer);
-  descriptor_destruct(&server->descriptor);
 }
 
 void server_open(server *server, int fd, SSL_CTX *ssl_ctx)
@@ -215,6 +212,7 @@ void server_open(server *server, int fd, SSL_CTX *ssl_ctx)
     server_ssl_open(server, fd, ssl_ctx);
   else
     server_socket_open(server, fd);
+  server->is_open = 1;
 }
 
 void server_shutdown(server *server)
@@ -230,27 +228,29 @@ void server_shutdown(server *server)
   }
 
   timer_clear(&server->timer);
-  descriptor_close(&server->descriptor);
+  if (server->is_open)
+  {
+    server->is_open = 0;
+    descriptor_destruct(&server->descriptor);
+  }
 }
 
 void server_accept(server *server, int fd)
 {
-  if (server_ssl_activated)
-  {
+  if (server->ssl_ctx)
     server_ssl_accept(server, fd);
-  }
   else
     server_socket_accept(server, fd);
 }
 
 void server_close(server_request *request)
 {
-  if (request->state != SERVER_REQUEST_ABORT)
+  if (request->state != SERVER_REQUEST_CLOSED)
   {
-    request->state = SERVER_REQUEST_ABORT;
     stream_close(&request->stream);
+    request->state = SERVER_REQUEST_CLOSED;
+    server_release(request);
   }
-  server_release(request);
 }
 
 void server_hold(server_request *request)
@@ -270,7 +270,7 @@ void server_release(server_request *request)
 
 void server_respond(server_request *request, data status, data type, data body)
 {
-  if (request->state == SERVER_REQUEST_HANDLING)
+  if (request->state != SERVER_REQUEST_CLOSED)
   {
     http_write_response(&request->stream, status, server_date(), type, body);
     if (request->event_triggered)
@@ -297,7 +297,7 @@ void server_not_found(server_request *request)
 
 void server_bad_request(server_request *request)
 {
-  if (request->state == SERVER_REQUEST_HANDLING)
+  if (request->state != SERVER_REQUEST_CLOSED)
   {
     http_write_response(&request->stream, data_string("400 Bad Request"), server_date(), data_null(), data_null());
     stream_flush(&request->stream);
