@@ -1,34 +1,21 @@
-=================
-libreactor v2.0.0
-=================
+================
+libreactor 3.0.0
+================
 
-.. image:: https://coveralls.io/repos/github/fredrikwidlund/libreactor/badge.svg?branch=master
-  :target: https://coveralls.io/github/fredrikwidlund/libreactor?branch=master
+.. image:: https://github.com/fredrikwidlund/libreactor/actions/workflows/build.yml/badge.svg?branch=release-3.0
+  :target: https://github.com/fredrikwidlund/libreactor/actions/workflows/build.yml
+.. image:: https://coveralls.io/repos/github/fredrikwidlund/libreactor/badge.svg?branch=release-3.0
+  :target: https://coveralls.io/github/fredrikwidlund/libreactor?branch=release-3.0
 
-----------
-Try it out
-----------
-
-The following will build a portable static web server ``hello`` (~60kB)
+-----
+Build
+-----
 
 .. code-block:: shell
 
     git clone https://github.com/fredrikwidlund/libreactor.git
     cd libreactor/
+    git checkout release-3.0
     ./autogen.sh
     ./configure
-    make hello
-
-Run it
-
-.. code-block:: shell
-
-    ./hello
-
-In another shell try
-
-.. code-block:: shell
-
-    wrk http://localhost
-
-.. _libdynamic: https://github.com/fredrikwidlund/libdynamic
+    make
