@@ -2,11 +2,11 @@ name: C/C++ CI
 
 on:
   push:
-    branches: [ release-3.0 ]
+    branches: [ master ]
   pull_request:
-    branches: [ release-3.0 ]
+    branches: [ master ]
   workflow_dispatch:
-    branches: [ release-3.0 ]
+    branches: [ master ]
 
 jobs:
   build:
