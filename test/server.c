@@ -48,7 +48,7 @@ static void requests_client_callback(reactor_event *event)
       r->request += r->partial;
       stream_flush(&r->client);
       timer_construct(&r->timer, requests_timer_callback, r);
-      timer_set(&r->timer, 1000, 0);
+      timer_set(&r->timer, 1000000, 0);
     }
     else
     {
