@@ -15,6 +15,9 @@ static void test_net(void **state)
   SSL_CTX *ctx;
 
   (void) state;
+
+  assert_int_equal(chdir(DATADIR), 0);
+
   /* should work */
   fd = net_socket(net_resolve("127.0.0.1", "0", AF_INET, SOCK_STREAM, AI_PASSIVE));
   assert_true(fd >= 0);
@@ -41,7 +44,7 @@ static void test_net(void **state)
 
   ctx = net_ssl_server_context("test/files/cert.pem", "test/files/no.pem");
   assert_false(ctx);
-  
+
 }
 
 int main()

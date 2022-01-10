@@ -1,10 +1,17 @@
 #include <stdlib.h>
 #include <stdarg.h>
+#include <unistd.h>
 #include <setjmp.h>
 
 #include <cmocka.h>
 
 #include "reactor.h"
+
+static void test_env(void **arg)
+{
+  (void) arg;
+  assert_int_equal(chdir(DATADIR), 0);
+}
 
 static void string_tests(void **arg)
 {
@@ -91,9 +98,10 @@ static void string_tests(void **arg)
 int main()
 {
   const struct CMUnitTest tests[] =
-      {
-          cmocka_unit_test(string_tests)
-      };
+    {
+      cmocka_unit_test(test_env),
+      cmocka_unit_test(string_tests)
+    };
 
   return cmocka_run_group_tests(tests, NULL, NULL);
 }

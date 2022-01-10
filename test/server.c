@@ -158,6 +158,12 @@ static void requests_run(char *request, int code, int partial, int ssl)
   SSL_CTX_free(server_ssl_ctx);
 }
 
+static void test_env(void **arg)
+{
+  (void) arg;
+  assert_int_equal(chdir(DATADIR), 0);
+}
+
 static void test_requests(void **arg)
 {
   (void) arg;
@@ -256,6 +262,7 @@ int main()
 {
   const struct CMUnitTest tests[] =
       {
+          cmocka_unit_test(test_env),
           cmocka_unit_test(test_requests),
           cmocka_unit_test(test_requests_ssl),
           cmocka_unit_test(test_edge_cases)};

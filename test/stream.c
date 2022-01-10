@@ -88,6 +88,8 @@ static void test_stream_transfer(__attribute__((unused)) void **arg)
 {
   int fd[2];
 
+  assert_int_equal(chdir(DATADIR), 0);
+
   assert_int_equal(socketpair(AF_UNIX, SOCK_STREAM | SOCK_NONBLOCK, 0, fd), 0);
   assert_int_equal(transfer(fd[1], fd[0], 0, 1), 0);
   assert_int_equal(transfer(fd[1], fd[0], 0, 1024), 0);

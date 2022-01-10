@@ -79,7 +79,8 @@ indent:
 
 ### unit testing ###
 
-AM_CFLAGS 			= -std=gnu2x -mno-sse -O0 -g -ftest-coverage -fprofile-arcs -I$(srcdir)/src -DGCOV_BUILD -DUNIT_TESTING
+AM_CFLAGS 			= -std=gnu2x -mno-sse -O0 -g -ftest-coverage -fprofile-arcs -I$(srcdir)/src -DGCOV_BUILD -DUNIT_TESTING -DDATADIR=\"$(srcdir)/\"
+
 LDADD 				= -L. libreactor_test.a -lcmocka
 
 check_LIBRARIES 		= libreactor_test.a
