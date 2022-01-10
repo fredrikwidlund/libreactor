@@ -16,7 +16,7 @@ jobs:
     steps:
     - uses: actions/checkout@v2
     - name: install deps
-      run: sudo apt-get install -y libssh-dev libcmocka-dev
+      run: sudo apt-get install -y libssh-dev libcmocka-dev lcov
     - name: autogen
       run: ./autogen.sh
     - name: configure
@@ -27,7 +27,12 @@ jobs:
       run: make check
     - name: make distcheck
       run: make distcheck
+    - name: generate coveralls info
+      run: |
+        lcov --directory . --capture --output-file coverage.info
+        lcov -o coverage.info -r coverage.info '*/test/*' '*/picohttpparser/*' '*libreactor/libreactor*'
     - name: Coveralls
       uses: coverallsapp/github-action@master
       with:
         github-token: ${{ secrets.GITHUB_TOKEN }}
+        path-to-lcov: coverage.info
