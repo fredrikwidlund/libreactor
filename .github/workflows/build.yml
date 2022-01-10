@@ -30,7 +30,7 @@ jobs:
     - name: generate coveralls info
       run: |
         lcov --directory . --capture --output-file coverage.info
-        lcov -o coverage.info -r coverage.info '*/test/*' '*/picohttpparser/*' '*libreactor/libreactor*'
+        lcov -o coverage.info -r coverage.info '*/test/*' '*/picohttpparser/*'
     - name: Coveralls
       uses: coverallsapp/github-action@master
       with:
