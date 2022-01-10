@@ -13,9 +13,9 @@ responder \
 string \
 http-performance \
 server \
-server-ssl
+tls-server
 
 responder_LDADD		= $(LDADD) -lssl -lcrypto
-server_ssl_LDADD	= $(LDADD) -lssl -lcrypto
+tls_server_LDADD	= $(LDADD) -lssl -lcrypto
 
 MAINTAINERCLEANFILES 	= Makefile.in
