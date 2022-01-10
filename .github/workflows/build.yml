@@ -1,0 +1,29 @@
+name: C/C++ CI
+
+on:
+  push:
+    branches: [ release-3.0 ]
+  pull_request:
+    branches: [ release-3.0 ]
+  workflow_dispatch:
+    branches: [ release-3.0 ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: install deps
+      run: sudo apt-get install -y libssh-dev libcmocka-dev
+    - name: autogen
+      run: ./autogen.sh
+    - name: configure
+      run: ./configure
+    - name: make
+      run: make
+    - name: make check
+      run: make check
+    - name: make distcheck
+      run: make distcheck
