@@ -3,7 +3,13 @@ ACLOCAL_AMFLAGS			= ${ACLOCAL_FLAGS} -I m4
 
 DIST_SUBDIRS 			= example
 
-SOURCE_FILES = \
+EXTRA_DIST 			= \
+CHANGES \
+LICENSE \
+README.rst
+
+
+SOURCE_FILES 			= \
 src/picohttpparser/picohttpparser.c \
 src/reactor/data.c \
 src/reactor/pointer.c \
@@ -25,7 +31,7 @@ src/reactor/http.c \
 src/reactor/net.c \
 src/reactor/server.c
 
-HEADER_FILES = \
+HEADER_FILES 			= \
 src/picohttpparser/picohttpparser.h \
 src/reactor/data.h \
 src/reactor/pointer.h \
@@ -49,8 +55,7 @@ src/reactor/server.h
 
 lib_LTLIBRARIES 		= libreactor.la
 libreactor_la_SOURCES 		= $(SOURCE_FILES) $(HEADER_FILES)
-libreactor_la_CFLAGS		= -std=gnu2x -g -O3 -flto -I$(srcdir)/src -fPIC
-#libreactor_la_CFLAGS		= -std=gnu2x -g -O3 -flto -march=native -I$(srcdir)/src -fPIC
+libreactor_la_CFLAGS		= -std=gnu2x -g -O3 -flto -march=native -I$(srcdir)/src -fPIC
 libreactor_la_LDFLAGS		= -static
 
 headerfilesdir 			= $(includedir)/reactor
@@ -111,5 +116,6 @@ test_net_LDADD			= $(LDADD) -lssl -lcrypto
 test_server_LDADD		= $(LDADD) -lssl -lcrypto
 
 dist_noinst_SCRIPTS 		= test/valgrind.sh test/coverage.sh
+dist_noinst_DATA		= test/files/cert.pem test/files/key.pem
 
 TESTS 				= $(check_PROGRAMS) test/valgrind.sh test/coverage.sh

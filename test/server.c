@@ -33,6 +33,8 @@ static void requests_timer_callback(reactor_event *event)
 
 static void requests_client_callback(reactor_event *event)
 {
+  const char expect200[] = "HTTP/1.1 200 OK\r\n";
+  const char expect404[] = "HTTP/1.1 404 Not Found\r\n";
   struct requests *r = event->state;
   data data;
 
@@ -59,11 +61,9 @@ static void requests_client_callback(reactor_event *event)
     switch (r->code)
     {
     case 200:
-      const char expect200[] = "HTTP/1.1 200 OK\r\n";
       assert_true(strlen(expect200) < data_size(data) && strncmp(data_base(data), expect200, strlen(expect200)) == 0);
       break;
     case 404:
-      const char expect404[] = "HTTP/1.1 404 Not Found\r\n";
       assert_true(strlen(expect404) < data_size(data) && strncmp(data_base(data), expect404, strlen(expect404)) == 0);
       break;
     }
