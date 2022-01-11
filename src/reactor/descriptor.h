@@ -27,6 +27,6 @@ void descriptor_open(descriptor *, int, enum descriptor_mask);
 void descriptor_mask(descriptor *, enum descriptor_mask);
 void descriptor_close(descriptor *);
 int  descriptor_fd(descriptor *);
-int  descriptor_active(descriptor *);
+int  descriptor_is_open(descriptor *);
 
 #endif /* REACTOR_DESCRIPTOR_H_INCLUDED */

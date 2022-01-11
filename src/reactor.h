@@ -32,12 +32,15 @@ extern "C" {
 #include "reactor/string.h"
 #include "reactor/core.h"
 #include "reactor/descriptor.h"
+#include "reactor/event.h"
 #include "reactor/stream.h"
 #include "reactor/net.h"
 #include "reactor/http.h"
 #include "reactor/timer.h"
 #include "reactor/notify.h"
 #include "reactor/server.h"
+#include "reactor/async.h"
+#include "reactor/resolver.h"
 
 #ifdef __cplusplus
 }

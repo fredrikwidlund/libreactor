@@ -24,12 +24,15 @@ src/reactor/maps.c \
 src/reactor/utility.c \
 src/reactor/core.c \
 src/reactor/descriptor.c \
+src/reactor/event.c \
 src/reactor/stream.c \
 src/reactor/timer.c \
 src/reactor/notify.c \
 src/reactor/http.c \
 src/reactor/net.c \
-src/reactor/server.c
+src/reactor/server.c \
+src/reactor/async.c \
+src/reactor/resolver.c
 
 HEADER_FILES 			= \
 src/picohttpparser/picohttpparser.h \
@@ -46,12 +49,15 @@ src/reactor/maps.h \
 src/reactor/utility.h \
 src/reactor/core.h \
 src/reactor/descriptor.h \
+src/reactor/event.h \
 src/reactor/stream.h \
 src/reactor/timer.h \
 src/reactor/notify.h \
 src/reactor/http.h \
 src/reactor/net.h \
-src/reactor/server.h
+src/reactor/server.h \
+src/reactor/async.h \
+src/reactor/resolver.h
 
 lib_LTLIBRARIES 		= libreactor.la
 libreactor_la_SOURCES 		= $(SOURCE_FILES) $(HEADER_FILES)
@@ -101,12 +107,15 @@ test/maps \
 test/utility \
 test/core \
 test/descriptor \
+test/event \
 test/stream \
 test/timer \
 test/notify \
 test/http \
 test/net \
-test/server
+test/server \
+test/async \
+test/resolver
 
 test_core_SOURCES		= test/core.c test/mock.c
 test_core_LDFLAGS 		= -Wl,--wrap=epoll_wait
@@ -115,6 +124,9 @@ test_stream_LDADD		= $(LDADD) -lssl -lcrypto
 test_http_LDADD			= $(LDADD) -lssl -lcrypto
 test_net_LDADD			= $(LDADD) -lssl -lcrypto
 test_server_LDADD		= $(LDADD) -lssl -lcrypto
+test_async_LDFLAGS		= -pthread
+test_resolver_LDADD		= $(LDADD) -lssl -lcrypto
+test_resolver_LDFLAGS		= -pthread
 
 dist_noinst_SCRIPTS 		= test/valgrind.sh test/coverage.sh
 dist_noinst_DATA		= test/files/cert.pem test/files/key.pem

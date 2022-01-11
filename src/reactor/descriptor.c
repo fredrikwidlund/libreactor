@@ -64,13 +64,14 @@ void descriptor_close(descriptor *descriptor)
 {
   int e;
 
-  if (!descriptor_active(descriptor))
+  if (!descriptor_is_open(descriptor))
     return;
 
   reactor_delete(&descriptor->epoll_handler, descriptor->fd);
   e = close(descriptor->fd);
   assert(e == 0);
   descriptor->fd = -1;
+  descriptor->mask = 0;
 }
 
 int descriptor_fd(descriptor *descriptor)
@@ -78,7 +79,7 @@ int descriptor_fd(descriptor *descriptor)
   return descriptor->fd;
 }
 
-int descriptor_active(descriptor *descriptor)
+int descriptor_is_open(descriptor *descriptor)
 {
   return descriptor->fd >= 0;
 }

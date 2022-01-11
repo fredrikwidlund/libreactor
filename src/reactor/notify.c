@@ -76,7 +76,7 @@ int notify_watch(notify *notify, char *path, uint32_t mask)
   int fd, wd;
   notify_entry *entry;
 
-  if (!descriptor_active(&notify->descriptor))
+  if (!descriptor_is_open(&notify->descriptor))
   {
     fd = inotify_init1(IN_NONBLOCK | IN_CLOEXEC);
     assert(fd != -1);

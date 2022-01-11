@@ -230,7 +230,7 @@ void stream_open(stream *stream, int fd, int mask, SSL_CTX *ssl_ctx)
 void stream_notify(stream *stream)
 {
   stream->notify = 1;
-  if (!descriptor_active(&stream->descriptor))
+  if (!descriptor_is_open(&stream->descriptor))
     return;
   if (stream->ssl)
     stream_ssl_update(stream);
@@ -240,7 +240,7 @@ void stream_notify(stream *stream)
 
 void stream_close(stream *stream)
 {
-  if (!descriptor_active(&stream->descriptor))
+  if (!descriptor_is_open(&stream->descriptor))
     return;
 
   if (stream_ssl_activated)
