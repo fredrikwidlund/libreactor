@@ -91,9 +91,14 @@ void http_write_request(stream *stream, data method, data target, data host, dat
 
 ssize_t http_read_response(stream *stream, int *status_code, data *status, http_field *fields, size_t *fields_count)
 {
+  return http_read_response_data(data_construct(stream->input.data, stream->input.size), status_code, status, fields, fields_count);
+}
+
+ssize_t http_read_response_data(data buffer, int *status_code, data *status, http_field *fields, size_t *fields_count)
+{
   int n, minor_version;
 
-  n = phr_parse_response(stream->input.data, stream->input.size, &minor_version, status_code,
+  n = phr_parse_response(data_base(buffer), data_size(buffer), &minor_version, status_code,
                          (const char **) &status->base, &status->size,
                          (struct phr_header *) fields, fields_count, 0);
   asm volatile("": : :"memory");

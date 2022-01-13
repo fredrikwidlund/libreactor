@@ -44,7 +44,4 @@ void  stream_write(stream *, data);
 void *stream_allocate(stream *, size_t);
 void  stream_flush(stream *);
 
-/* stream_receive_size(), stream_send_size() */
-/* stream_close()? stream_allocate()? stream_read_line()? */
-
 #endif /* REACTOR_STREAM_H_INCLUDED */

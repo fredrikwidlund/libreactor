@@ -51,6 +51,16 @@ int net_socket(struct addrinfo *addrinfo)
   return fd;
 }
 
+SSL_CTX *net_ssl_client(int verify)
+{
+  SSL_CTX *ssl_ctx;
+
+  ssl_ctx = SSL_CTX_new(TLS_client_method());
+  SSL_CTX_set_default_verify_paths(ssl_ctx);
+  SSL_CTX_set_verify(ssl_ctx, verify ? SSL_VERIFY_PEER : SSL_VERIFY_NONE, NULL);
+  return ssl_ctx;
+}
+
 SSL_CTX *net_ssl_server_context(char *certificate, char *private_key)
 {
   SSL_CTX *ctx;
@@ -71,4 +81,9 @@ SSL_CTX *net_ssl_server_context(char *certificate, char *private_key)
     return NULL;
   }
   return ctx;
+}
+
+void net_ssl_free(SSL_CTX *ssl_ctx)
+{
+  SSL_CTX_free(ssl_ctx);
 }

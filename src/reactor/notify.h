@@ -1,5 +1,5 @@
 #ifndef REACTOR_NOFITY_H_INCLUDED
-#define REACTOR_NOTIFY_H_INCLUDED
+#define REACTOR_NOFITY_H_INCLUDED
 
 enum notify_event_type
 {

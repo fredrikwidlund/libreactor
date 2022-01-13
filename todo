@@ -1,3 +1,3 @@
-* finalise optimised server
-* rework pool?
 * client
+* set rcv snd buffer sizes
+* finalise optimised server

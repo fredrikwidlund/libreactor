@@ -55,8 +55,7 @@ uint64_t utility_tsc(void)
 {
 #if defined(__x86_64__) || defined(__amd64__)
   uint32_t lo, hi;
-  __asm__ volatile("RDTSC"
-                   : "=a"(lo), "=d"(hi));
+  __asm__ volatile("RDTSC": "=a"(lo), "=d"(hi));
   return (((uint64_t) hi) << 32) | lo;
 #else
   return 0;

@@ -59,14 +59,4 @@ void server_ok(server_request *, data, data);
 void server_not_found(server_request *);
 void server_bad_request(server_request *);
 
-/*
-void server_transaction_ready(server_transaction *);
-void server_transaction_write(server_transaction *, data);
-void server_transaction_ok(server_transaction *, data, data);
-void server_transaction_text(server_transaction *, data);
-void server_transaction_printf(server_transaction *, data, const char *, ...);
-void server_transaction_not_found(server_transaction *);
-void server_transaction_disconnect(server_transaction *);
-*/
-
 #endif /* REACTOR_SERVER_H_INCLUDED */

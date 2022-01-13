@@ -104,6 +104,12 @@ static void stream_socket_open(stream *stream, int fd)
 
 static int stream_ssl_mask(stream *stream)
 {
+  if (stream->ssl_state == SSL_ERROR_SSL)
+  {
+    shutdown(descriptor_fd(&stream->descriptor), SHUT_RDWR);
+    return 0;
+  }
+
   return (stream->mask & STREAM_READ) |
     ((stream->ssl_state == SSL_ERROR_WANT_WRITE) | buffer_size(&stream->output) | stream->notify ? STREAM_WRITE : 0);
 }
