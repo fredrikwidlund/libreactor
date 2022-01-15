@@ -1,3 +1,5 @@
 * client
 * set rcv snd buffer sizes
 * finalise optimised server
+* OCSP stapling and tls session cache, _maybe_
+

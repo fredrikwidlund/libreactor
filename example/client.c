@@ -86,7 +86,7 @@ static ssize_t client_read_body(data buffer, http_field *fields, size_t fields_c
     return -1;
 
   *body = data_select(buffer, 0, strtoul(data_base(content_length), NULL, 10));
-  return data_size(*body) > data_size(buffer) ? -2 : data_size(*body);
+  return data_size(*body) > data_size(buffer) ? -2 : (ssize_t) data_size(*body);
 }
 
 static ssize_t client_read_request_body(data buffer, int request_is_head, int status_code,
@@ -102,7 +102,7 @@ static void client_read(client *client)
 {
   client_response response;
   data data;
-  ssize_t header_consumed, body_consumed, valid;
+  ssize_t header_consumed, body_consumed = 0, valid;
 
   response.fields_count = sizeof response.fields / sizeof response.fields[0];
   data = stream_read(&client->stream);
