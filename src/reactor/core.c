@@ -40,7 +40,7 @@ struct reactor
   struct epoll_event *event_end;
 };
 
-static __thread reactor reactor_core = {0};
+static __thread reactor reactor_core = {.epoll_fd = -1};
 
 static void reactor_signal(__attribute__((unused)) int arg)
 {
