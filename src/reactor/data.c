@@ -13,7 +13,7 @@ void data_free(data data)
   free((void *) data_base(data));
 }
 
-data data_construct(const char *base, size_t size)
+data data_construct(const void *base, size_t size)
 {
   return (data) {.base = base, .size = size};
 }
@@ -66,4 +66,9 @@ size_t data_offset(data d1, data d2)
 data data_consume(data data, size_t size)
 {
   return data_construct((char *) data.base + size, data.size - size);
+}
+
+data data_merge(data d1, data d2)
+{
+  return data_construct(data_base(d1), data_offset(d1, d2) + data_size(d2));
 }

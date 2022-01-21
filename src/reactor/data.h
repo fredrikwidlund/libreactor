@@ -14,7 +14,7 @@ struct data
 
 data        data_alloc(size_t);
 void        data_free(data);
-data        data_construct(const char *, size_t);
+data        data_construct(const void *, size_t);
 data        data_select(data, size_t, size_t);
 data        data_null(void);
 data        data_string(const char *);
@@ -25,5 +25,6 @@ int         data_equal(data, data);
 int         data_prefix(data, data);
 size_t      data_offset(data, data);
 data        data_consume(data, size_t);
+data        data_merge(data, data);
 
 #endif /* REACTOR_DATA_H_INCLUDED */
