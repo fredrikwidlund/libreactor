@@ -134,7 +134,7 @@ static void requests_run(char *request, int code, int partial, int ssl)
   {
     client_ssl_ctx = SSL_CTX_new(TLS_client_method());
     assert_true(client_ssl_ctx);
-    server_ssl_ctx = net_ssl_server_context("test/files/cert.pem", "test/files/key.pem");
+    server_ssl_ctx = net_ssl_server("test/files/cert.pem", "test/files/key.pem", NULL);
     assert_true(server_ssl_ctx);
   }
 
@@ -214,7 +214,7 @@ static void test_edge_cases(void **arg)
   stream_construct(&client, NULL, NULL);
   stream_open(&client, fd[0], STREAM_WRITE, NULL);
   server_construct(&server, NULL, NULL);
-  server_ssl_ctx = net_ssl_server_context("test/files/cert.pem", "test/files/key.pem");
+  server_ssl_ctx = net_ssl_server("test/files/cert.pem", "test/files/key.pem", NULL);
   assert_true(server_ssl_ctx);
   server.ssl_ctx = server_ssl_ctx;
   server_accept(&server, fd[1]);
